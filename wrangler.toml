@@ -2,6 +2,10 @@ name = "us-process-d1-worker"
 main = "index.js"
 compatibility_date = "2025-01-01"
 
+[assets]
+directory = "."
+not_found_handling = "single-page-application"
+
 [[d1_databases]]
 binding     = "DB"
 database_name = "us-process-data"

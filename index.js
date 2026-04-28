@@ -37,6 +37,11 @@ export default {
     const { pathname } = new URL(request.url);
     const p = qs(request.url);
 
+    // Non-API routes → serve static assets (index.html, HTML change files, etc.)
+    if (!pathname.startsWith("/api/")) {
+      return env.ASSETS.fetch(request);
+    }
+
     // ── /api/uploads ──────────────────────────────────────────────────────────
     if (pathname === "/api/uploads") {
       const limit = Math.min(parseInt(p.limit) || 50, 100);
