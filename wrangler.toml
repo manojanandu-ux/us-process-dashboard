@@ -1,0 +1,8 @@
+name = "us-process-d1-worker"
+main = "index.js"
+compatibility_date = "2025-01-01"
+
+[[d1_databases]]
+binding     = "DB"
+database_name = "us-process-data"
+database_id   = "644fbd07-2da0-4e58-a7d7-69a928df8f9d"

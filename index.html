@@ -1,0 +1,1667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>US Projects Dashboard — Blackridge Intelligence</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson@3/dist/topojson.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .mono { font-family: 'IBM Plex Mono', monospace; }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: #f4f4f5; }
+    ::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #a1a1aa; }
+
+    @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+    .fade-in { animation: fadeIn 0.25s ease forwards; }
+
+    .upload-zone { border: 2px dashed #d4d4d8; transition: all 0.2s ease; }
+    .upload-zone:hover, .upload-zone.drag-over { border-color: #71717a; background: #fafafa; }
+
+    .data-table th { position: sticky; top: 0; background: #fafafa; z-index: 10; cursor: pointer; user-select: none; white-space: nowrap; }
+    .data-table th:hover { background: #f0f0f0; }
+    .data-row:hover td { background: #fafafa; }
+
+    .tab-btn { border-bottom: 2px solid transparent; transition: color 0.15s, border-color 0.15s; }
+    .tab-btn.active { border-bottom-color: #18181b !important; color: #18181b !important; }
+
+    .q-good { background:#dcfce7; color:#166534; }
+    .q-fair { background:#fef9c3; color:#92400e; }
+    .q-poor { background:#fee2e2; color:#991b1b; }
+
+    .tooltip-wrap { position:relative; }
+    .tooltip-tip { display:none; position:absolute; bottom:calc(100% + 5px); left:50%; transform:translateX(-50%); background:#18181b; color:#fff; font-size:10px; padding:3px 7px; border-radius:4px; white-space:nowrap; z-index:999; pointer-events:none; }
+    .tooltip-wrap:hover .tooltip-tip { display:block; }
+
+    .modal-panel { transform: translateX(100%); transition: transform 0.25s ease; }
+    .modal-panel.open { transform: translateX(0); }
+    .modal-overlay { opacity:0; transition: opacity 0.25s ease; }
+    .modal-overlay.open { opacity:1; }
+
+    .changes-viewer { font-family: inherit; color: #3f3f46; }
+    .changes-viewer ins, .changes-viewer .wsw-new { background:#dcfce7; color:#166534; padding:1px 4px; border-radius:3px; text-decoration:none; font-style:normal; }
+    .changes-viewer del, .changes-viewer .wsw-removed { background:#fee2e2; color:#991b1b; text-decoration:line-through; padding:1px 4px; border-radius:3px; }
+    .changes-viewer .wsw-changed { background:#fef9c3; color:#92400e; padding:1px 4px; border-radius:3px; }
+    .changes-viewer a { color:#2563eb; text-decoration:underline; word-break:break-all; }
+    .changes-viewer a:hover { color:#1d4ed8; }
+    .changes-viewer br { display:block; margin:2px 0; content:""; }
+    .html-card { border-left: 3px solid #f59e0b; }
+    #html-groups { padding-bottom: 40px; }
+  </style>
+</head>
+<body class="bg-white text-zinc-900 min-h-screen">
+
+<!-- Hidden file inputs for fallback -->
+<input type="file" id="csv-input" accept=".csv" class="hidden">
+<input type="file" id="html-input" accept=".html,.htm" class="hidden">
+<div id="drop-zone" class="hidden"></div>
+<div id="upload-progress" class="hidden"><div id="progress-bar"></div><span id="parse-count"></span></div>
+
+<!-- ── LOADING SCREEN ── -->
+<div id="upload-screen" class="min-h-screen flex flex-col items-center justify-center bg-zinc-50">
+  <div class="w-10 h-10 border-2 border-zinc-200 border-t-zinc-900 rounded-full animate-spin mb-5"></div>
+  <div class="text-zinc-700 text-sm font-semibold mb-1">Loading dashboard…</div>
+  <div class="mono text-xs text-zinc-400 mb-6">Test 7.csv · 16-04-2026.html</div>
+  <!-- Fallback if fetch fails -->
+  <div id="load-error" class="hidden text-center">
+    <p class="text-zinc-400 text-xs mb-4">Auto-load failed. Select files manually:</p>
+    <div class="flex gap-3 justify-center">
+      <label class="cursor-pointer text-xs font-semibold bg-zinc-900 text-white px-4 py-2.5 rounded-xl hover:bg-zinc-700 transition-colors">
+        CSV file <input type="file" id="csv-input-fb" accept=".csv" class="hidden">
+      </label>
+      <label class="cursor-pointer text-xs font-semibold border border-zinc-200 text-zinc-600 px-4 py-2.5 rounded-xl hover:border-zinc-400 transition-colors">
+        HTML report <input type="file" id="html-input-fb" accept=".html,.htm" class="hidden">
+      </label>
+    </div>
+    <p class="text-xs text-zinc-300 mt-3">Or serve this folder with <span class="mono bg-zinc-100 px-1 py-0.5 rounded">python -m http.server</span></p>
+  </div>
+</div>
+
+<!-- ── DASHBOARD ── -->
+<div id="dashboard" class="hidden min-h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="border-b border-zinc-200 bg-white sticky top-0 z-40">
+    <div class="max-w-screen-2xl mx-auto px-6 h-13 flex items-center justify-between" style="height:52px">
+      <div class="flex items-center gap-3">
+        <div class="w-6 h-6 bg-zinc-900 rounded flex items-center justify-center">
+          <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+          </svg>
+        </div>
+        <span class="font-semibold text-zinc-900 text-sm">US Projects Dashboard</span>
+        <span class="text-zinc-300">|</span>
+        <span class="mono text-xs text-zinc-400" id="hdr-filename">—</span>
+      </div>
+      <button onclick="resetDashboard()" class="text-xs text-zinc-400 hover:text-zinc-800 transition-colors flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+        Load new file
+      </button>
+    </div>
+  </header>
+
+  <!-- Stats bar -->
+  <div class="bg-zinc-50 border-b border-zinc-100">
+    <div class="max-w-screen-2xl mx-auto px-6 py-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div class="bg-white border border-sky-200 rounded-xl p-4">
+        <div class="text-2xl font-bold text-sky-600 mono" id="s-html-changes">0</div>
+        <div class="text-xs text-zinc-500 mt-1">HTML Changes</div>
+        <div class="mt-2 h-0.5 bg-sky-100 rounded-full overflow-hidden"><div id="bar-html-changes" class="h-full bg-sky-400 rounded-full transition-all duration-700" style="width:100%"></div></div>
+      </div>
+      <div class="bg-white border border-zinc-200 rounded-xl p-4">
+        <div class="text-2xl font-bold text-emerald-600 mono" id="s-approved">0</div>
+        <div class="text-xs text-zinc-500 mt-1">LLM Approved</div>
+        <div class="mt-2 h-0.5 bg-emerald-100 rounded-full overflow-hidden"><div id="bar-approved" class="h-full bg-emerald-500 rounded-full transition-all duration-700" style="width:0%"></div></div>
+      </div>
+      <div class="bg-white border border-zinc-200 rounded-xl p-4">
+        <div class="text-2xl font-bold text-amber-500 mono" id="s-rejected">0</div>
+        <div class="text-xs text-zinc-500 mt-1">LLM Rejected</div>
+        <div class="mt-2 h-0.5 bg-amber-100 rounded-full overflow-hidden"><div id="bar-rejected" class="h-full bg-amber-400 rounded-full transition-all duration-700" style="width:0%"></div></div>
+      </div>
+      <div class="bg-white border border-zinc-200 rounded-xl p-4">
+        <div class="text-2xl font-bold text-red-500 mono" id="s-failed">0</div>
+        <div class="text-xs text-zinc-500 mt-1">Failed Extraction</div>
+        <div class="mt-2 h-0.5 bg-red-100 rounded-full overflow-hidden"><div id="bar-failed" class="h-full bg-red-400 rounded-full transition-all duration-700" style="width:0%"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <div class="flex-1 max-w-screen-2xl mx-auto w-full px-6 py-5">
+
+    <!-- Tabs -->
+    <div class="flex items-center gap-0 border-b border-zinc-200 mb-5">
+      <button class="tab-btn active px-4 py-3 text-sm font-medium text-zinc-400 -mb-px" onclick="switchTab('htmlmap')">
+        <span class="flex items-center gap-2">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6-10l6-3m0 13l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-1.447-.894L15 9m0 4V9"/></svg>
+          HTML Changes &amp; Map
+          <span class="mono text-xs bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded" id="tc-html">0</span>
+        </span>
+      </button>
+      <button class="tab-btn px-4 py-3 text-sm font-medium text-zinc-400 -mb-px" onclick="switchTab('approved')">
+        <span class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+          LLM Approved
+          <span class="mono text-xs bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded" id="tc-approved">0</span>
+        </span>
+      </button>
+      <button class="tab-btn px-4 py-3 text-sm font-medium text-zinc-400 -mb-px" onclick="switchTab('rejected')">
+        <span class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-amber-400 inline-block"></span>
+          LLM Rejected
+          <span class="mono text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded" id="tc-rejected">0</span>
+        </span>
+      </button>
+      <button class="tab-btn px-4 py-3 text-sm font-medium text-zinc-400 -mb-px" onclick="switchTab('failed')">
+        <span class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-red-400 inline-block"></span>
+          Failed Extraction
+          <span class="mono text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded" id="tc-failed">0</span>
+        </span>
+      </button>
+    </div>
+
+    <!-- Filter bar -->
+    <div id="filter-bar" class="flex flex-wrap items-center gap-2 mb-4">
+      <div class="relative flex-1 min-w-52 max-w-sm">
+        <svg class="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        <input type="text" id="search-input" placeholder="Search projects, agencies, locations…"
+          class="w-full pl-9 pr-4 py-2 text-sm border border-zinc-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-zinc-100 focus:border-zinc-400 transition-all placeholder-zinc-300"
+          oninput="applyFilters()">
+      </div>
+      <select id="state-filter" class="px-3 py-2 text-sm border border-zinc-200 rounded-lg bg-white focus:outline-none text-zinc-600 cursor-pointer" onchange="applyFilters()">
+        <option value="">All States</option>
+      </select>
+      <select id="region-filter" class="px-3 py-2 text-sm border border-zinc-200 rounded-lg bg-white focus:outline-none text-zinc-600 cursor-pointer" onchange="applyFilters()">
+        <option value="">All Regions</option>
+      </select>
+      <select id="type-filter" class="px-3 py-2 text-sm border border-zinc-200 rounded-lg bg-white focus:outline-none text-zinc-600 cursor-pointer approved-only hidden" onchange="applyFilters()">
+        <option value="">All Types</option>
+      </select>
+      <div class="ml-auto flex items-center gap-2">
+        <span class="text-xs text-zinc-400 mono" id="showing-count">—</span>
+        <button onclick="clearFilters()" class="text-xs text-zinc-500 hover:text-zinc-800 border border-zinc-200 hover:border-zinc-300 rounded-lg px-2.5 py-1.5 bg-white transition-colors">Clear</button>
+        <button onclick="exportCSV()" class="text-xs text-zinc-600 hover:text-zinc-900 border border-zinc-200 hover:border-zinc-300 rounded-lg px-2.5 py-1.5 bg-white transition-colors flex items-center gap-1">
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          Export
+        </button>
+      </div>
+    </div>
+
+    <!-- ── TAB: HTML CHANGES & MAP (combined, first) ── -->
+    <div id="tab-htmlmap" class="tab-content">
+
+      <!-- LLM classification stats for HTML-monitored pages -->
+      <div class="grid grid-cols-3 gap-3 mb-6">
+        <div class="bg-white border border-emerald-200 rounded-xl p-4">
+          <div class="text-2xl font-bold text-emerald-600 mono" id="hc-approved">0</div>
+          <div class="text-xs text-zinc-500 mt-0.5">LLM Approved</div>
+          <div class="text-xs text-zinc-300 mt-0.5">from monitored pages</div>
+          <div class="mt-2 h-0.5 bg-emerald-100 rounded-full overflow-hidden"><div id="hcbar-approved" class="h-full bg-emerald-500 rounded-full transition-all duration-700" style="width:0%"></div></div>
+        </div>
+        <div class="bg-white border border-amber-200 rounded-xl p-4">
+          <div class="text-2xl font-bold text-amber-500 mono" id="hc-rejected">0</div>
+          <div class="text-xs text-zinc-500 mt-0.5">LLM Rejected</div>
+          <div class="text-xs text-zinc-300 mt-0.5">from monitored pages</div>
+          <div class="mt-2 h-0.5 bg-amber-100 rounded-full overflow-hidden"><div id="hcbar-rejected" class="h-full bg-amber-400 rounded-full transition-all duration-700" style="width:0%"></div></div>
+        </div>
+        <div class="bg-white border border-red-200 rounded-xl p-4">
+          <div class="text-2xl font-bold text-red-500 mono" id="hc-failed">0</div>
+          <div class="text-xs text-zinc-500 mt-0.5">Failed Extraction</div>
+          <div class="text-xs text-zinc-300 mt-0.5">from monitored pages</div>
+          <div class="mt-2 h-0.5 bg-red-100 rounded-full overflow-hidden"><div id="hcbar-failed" class="h-full bg-red-400 rounded-full transition-all duration-700" style="width:0%"></div></div>
+        </div>
+      </div>
+
+      <!-- Map + State Rankings (3:2 grid) -->
+      <div class="grid gap-5 mb-8" style="grid-template-columns:3fr 2fr">
+
+        <!-- Map -->
+        <div class="min-w-0">
+          <div class="flex flex-wrap items-center gap-2 mb-3">
+            <span class="text-xs text-zinc-400">Color by:</span>
+            <button class="map-mode-btn text-xs px-3 py-1.5 rounded-lg border border-zinc-200 font-medium transition-colors bg-zinc-900 text-white" data-mode="total"    onclick="setMapMode('total')">Total Updates</button>
+            <button class="map-mode-btn text-xs px-3 py-1.5 rounded-lg border border-zinc-200 font-medium transition-colors bg-white text-zinc-600" data-mode="approved" onclick="setMapMode('approved')">LLM Approved</button>
+            <button class="map-mode-btn text-xs px-3 py-1.5 rounded-lg border border-zinc-200 font-medium transition-colors bg-white text-zinc-600" data-mode="rejected" onclick="setMapMode('rejected')">LLM Rejected</button>
+            <button class="map-mode-btn text-xs px-3 py-1.5 rounded-lg border border-zinc-200 font-medium transition-colors bg-white text-zinc-600" data-mode="failed"   onclick="setMapMode('failed')">Failed</button>
+          </div>
+          <div id="map-svg-container" class="w-full rounded-xl border border-zinc-200 bg-white p-4">
+            <div class="text-center py-20 text-zinc-300 text-sm">Loading map…</div>
+          </div>
+          <div id="map-legend" class="px-1"></div>
+        </div>
+
+        <!-- State Rankings -->
+        <div class="min-w-0">
+          <div class="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2 px-0.5">State Rankings</div>
+          <div class="bg-white border border-zinc-200 rounded-xl px-4 overflow-y-auto" style="max-height:440px" id="map-state-table">
+            <div class="text-xs text-zinc-300 py-6 text-center">Loading…</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- HTML Changes — full width below map -->
+      <div class="border-t border-zinc-100 pt-6">
+
+        <!-- Section header + controls -->
+        <div class="flex flex-wrap items-center gap-3 mb-5">
+          <div class="flex items-center gap-2">
+            <svg class="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+            <span class="text-sm font-semibold text-zinc-800">HTML Changes</span>
+            <span class="mono text-xs bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full" id="html-count">—</span>
+          </div>
+          <div class="relative flex-1 min-w-52 max-w-sm">
+            <svg class="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+            <input type="text" id="html-search" placeholder="Search changes, URLs, summaries…"
+              class="w-full pl-9 pr-4 py-2 text-sm border border-zinc-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-zinc-100 focus:border-zinc-400 transition-all placeholder-zinc-300"
+              oninput="renderHTMLChanges()">
+          </div>
+          <select id="html-folder-filter" class="px-3 py-2 text-sm border border-zinc-200 rounded-lg bg-white focus:outline-none text-zinc-600 cursor-pointer" onchange="renderHTMLChanges()">
+            <option value="">All States</option>
+          </select>
+          <div id="html-active-state" class="hidden flex items-center gap-2 px-3 py-1.5 bg-sky-50 border border-sky-200 rounded-lg">
+            <svg class="w-3.5 h-3.5 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            <span class="text-xs text-sky-700 font-medium" id="html-active-state-label">—</span>
+            <button onclick="filterHTMLChangesByState('')" class="text-xs text-sky-400 hover:text-sky-700 font-medium transition-colors ml-1">Clear ×</button>
+          </div>
+        </div>
+
+        <!-- Card grid (populated by renderHTMLChanges) -->
+        <div id="html-groups"></div>
+
+      </div>
+
+    </div><!-- /tab-htmlmap -->
+
+    <!-- ── TAB: APPROVED ── -->
+    <div id="tab-approved" class="tab-content hidden">
+      <div class="overflow-auto rounded-xl border border-zinc-200 bg-white">
+        <table class="data-table w-full text-sm border-collapse">
+          <thead>
+            <tr class="border-b border-zinc-200 text-left bg-zinc-50">
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide" onclick="sortTable('approved','Project_Name')">Project Name <span class="text-zinc-300 text-xs">↕</span></th>
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide" onclick="sortTable('approved','Agency')">Agency <span class="text-zinc-300 text-xs">↕</span></th>
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide" onclick="sortTable('approved','City')">Location <span class="text-zinc-300 text-xs">↕</span></th>
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide" onclick="sortTable('approved','Project_Type')">Type <span class="text-zinc-300 text-xs">↕</span></th>
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide" onclick="sortTable('approved','Bid_Deadline')">Deadline <span class="text-zinc-300 text-xs">↕</span></th>
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide" onclick="sortTable('approved','Confidence')">Confidence <span class="text-zinc-300 text-xs">↕</span></th>
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Docs</th>
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Link</th>
+            </tr>
+          </thead>
+          <tbody id="approved-tbody"></tbody>
+        </table>
+      </div>
+      <div id="approved-empty" class="hidden text-center py-20 text-zinc-300">
+        <svg class="w-9 h-9 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+        <p class="text-sm text-zinc-400">No approved projects match your filters</p>
+      </div>
+      <div id="approved-pagination" class="flex items-center justify-between mt-4 px-1"></div>
+    </div>
+
+    <!-- ── TAB: REJECTED ── -->
+    <div id="tab-rejected" class="tab-content hidden">
+      <div class="overflow-auto rounded-xl border border-zinc-200 bg-white">
+        <table class="data-table w-full text-sm border-collapse">
+          <thead>
+            <tr class="border-b border-zinc-200 text-left bg-zinc-50">
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide" onclick="sortTable('rejected','Heading')">Heading <span class="text-zinc-300 text-xs">↕</span></th>
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide" onclick="sortTable('rejected','State')">State <span class="text-zinc-300 text-xs">↕</span></th>
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide" onclick="sortTable('rejected','Region')">Region <span class="text-zinc-300 text-xs">↕</span></th>
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide" onclick="sortTable('rejected','Confidence')">Confidence <span class="text-zinc-300 text-xs">↕</span></th>
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Rejection Reason</th>
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide" onclick="sortTable('rejected','Content_Quality')">Quality <span class="text-zinc-300 text-xs">↕</span></th>
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Text</th>
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Link</th>
+            </tr>
+          </thead>
+          <tbody id="rejected-tbody"></tbody>
+        </table>
+      </div>
+      <div id="rejected-empty" class="hidden text-center py-20">
+        <svg class="w-9 h-9 mx-auto mb-3 text-zinc-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
+        <p class="text-sm text-zinc-400">No rejected records match your filters</p>
+      </div>
+      <div id="rejected-pagination" class="flex items-center justify-between mt-4 px-1"></div>
+    </div>
+
+    <!-- ── TAB: FAILED ── -->
+    <div id="tab-failed" class="tab-content hidden">
+      <div class="overflow-auto rounded-xl border border-zinc-200 bg-white">
+        <table class="data-table w-full text-sm border-collapse">
+          <thead>
+            <tr class="border-b border-zinc-200 text-left bg-zinc-50">
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide" onclick="sortTable('failed','Heading')">Heading <span class="text-zinc-300 text-xs">↕</span></th>
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide" onclick="sortTable('failed','State')">State <span class="text-zinc-300 text-xs">↕</span></th>
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide" onclick="sortTable('failed','Region')">Region <span class="text-zinc-300 text-xs">↕</span></th>
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide" onclick="sortTable('failed','Extraction_Status')">Failure Reason <span class="text-zinc-300 text-xs">↕</span></th>
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide" onclick="sortTable('failed','Content_Quality')">Quality <span class="text-zinc-300 text-xs">↕</span></th>
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Text</th>
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide" onclick="sortTable('failed','Processing_Date')">Date <span class="text-zinc-300 text-xs">↕</span></th>
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Link</th>
+            </tr>
+          </thead>
+          <tbody id="failed-tbody"></tbody>
+        </table>
+      </div>
+      <div id="failed-empty" class="hidden text-center py-20">
+        <svg class="w-9 h-9 mx-auto mb-3 text-zinc-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <p class="text-sm text-zinc-400">No failed records match your filters</p>
+      </div>
+      <div id="failed-pagination" class="flex items-center justify-between mt-4 px-1"></div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /dashboard -->
+
+<!-- ── DETAIL PANEL ── -->
+<div id="modal-overlay" class="modal-overlay fixed inset-0 bg-black/25 backdrop-blur-sm z-50 hidden" onclick="closeModal()"></div>
+<div id="modal-panel" class="modal-panel fixed right-0 top-0 bottom-0 w-full max-w-2xl bg-white shadow-2xl z-50 flex flex-col hidden">
+  <div class="sticky top-0 bg-white border-b border-zinc-200 px-6 py-4 flex items-start justify-between gap-4">
+    <h2 class="font-semibold text-zinc-900 text-sm leading-snug" id="modal-title">Details</h2>
+    <button onclick="closeModal()" class="flex-shrink-0 p-1 rounded-lg hover:bg-zinc-100 transition-colors mt-0.5">
+      <svg class="w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div id="modal-body" class="flex-1 overflow-y-auto px-6 py-5"></div>
+</div>
+
+<!-- Map hover tooltip -->
+<div id="map-tooltip" class="fixed hidden bg-white border border-zinc-200 rounded-xl shadow-2xl p-4 z-50 pointer-events-none" style="min-width:200px;max-width:230px"></div>
+
+<script>
+// ── STATE ──
+let allData = [], approved = [], rejected = [], failed = [];
+let filtered = { approved:[], rejected:[], failed:[] };
+let pages = { approved:1, rejected:1, failed:1 };
+let sortState = { approved:{col:'',dir:'asc'}, rejected:{col:'',dir:'asc'}, failed:{col:'',dir:'asc'} };
+let currentTab = 'htmlmap';
+const PAGE_SIZE = 75;
+let htmlData = [], htmlLoaded = false, htmlFileName = '';
+let urlToCSVRows = {};
+
+// ── FILE LOADING ──
+document.getElementById('csv-input').addEventListener('change', e => { if(e.target.files[0]) loadFile(e.target.files[0]); });
+const dropZone = document.getElementById('drop-zone');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag-over'); if(e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); });
+
+function loadFile(file) {
+  allData = [];
+  document.getElementById('upload-progress').classList.remove('hidden');
+  document.getElementById('hdr-filename').textContent = file.name;
+
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
+    chunk(results) {
+      allData = allData.concat(results.data);
+      document.getElementById('parse-count').textContent = allData.length.toLocaleString() + ' rows';
+      document.getElementById('progress-bar').style.width = '65%';
+    },
+    complete() {
+      document.getElementById('progress-bar').style.width = '100%';
+      setTimeout(processData, 150);
+    },
+    error(err) { alert('Error: ' + err.message); }
+  });
+}
+
+function processData() {
+  approved = []; rejected = []; failed = [];
+  for (const row of allData) {
+    const status = (row['Processing_Status'] || '').trim();
+    const isProj  = (row['Is_Project'] || '').trim();
+    if (status === 'Failed') failed.push(row);
+    else if (isProj === 'True') approved.push(row);
+    else rejected.push(row);
+  }
+
+  filtered.approved = [...approved];
+  filtered.rejected = [...rejected];
+  filtered.failed   = [...failed];
+
+  const total = allData.length;
+  const set = (id,val) => document.getElementById(id).textContent = val.toLocaleString();
+  set('s-approved', approved.length); set('s-rejected', rejected.length); set('s-failed', failed.length);
+  set('tc-approved', approved.length); set('tc-rejected', rejected.length); set('tc-failed', failed.length);
+
+  const pct = n => total ? (n/total*100).toFixed(1)+'%' : '0%';
+  document.getElementById('bar-approved').style.width = pct(approved.length);
+  document.getElementById('bar-rejected').style.width = pct(rejected.length);
+  document.getElementById('bar-failed').style.width   = pct(failed.length);
+
+  buildURLIndex();
+  updateHTMLClassStats();
+  populateFilters();
+  renderAll();
+
+  document.getElementById('upload-screen').classList.add('hidden');
+  document.getElementById('dashboard').classList.remove('hidden');
+
+  // Init map + HTML list immediately since combined tab is first
+  aggregateByState();
+  initMap();
+  renderMapStateTable();
+  updateMapSummary();
+  // Populate HTML folder filter (needed for auto-load path where loadHTMLFile isn't called)
+  (function() {
+    const folders = [...new Set(htmlData.map(d => d.groupKey))].sort();
+    const sel = document.getElementById('html-folder-filter');
+    while (sel.options.length > 1) sel.remove(1);
+    folders.forEach(f => { const o = document.createElement('option'); o.value = o.textContent = f; sel.appendChild(o); });
+  })();
+  renderHTMLChanges();
+  updateHTMLChangesStat();
+}
+
+function populateFilters() {
+  const uniq = (arr, key) => [...new Set(arr.map(r => (r[key]||'').trim()).filter(Boolean))].sort();
+  const states  = uniq(allData, 'State');
+  const regions = uniq(allData, 'Region');
+  const types   = uniq(approved, 'Project_Type').filter(t => t && t !== 'N/A');
+
+  const fill = (id, items) => { const el = document.getElementById(id); items.forEach(v => { const o=document.createElement('option'); o.value=o.textContent=v; el.appendChild(o); }); };
+  fill('state-filter', states);
+  fill('region-filter', regions);
+  fill('type-filter', types);
+}
+
+// ── FILTERS ──
+function applyFilters() {
+  const q      = document.getElementById('search-input').value.toLowerCase();
+  const state  = document.getElementById('state-filter').value;
+  const region = document.getElementById('region-filter').value;
+  const type   = document.getElementById('type-filter').value;
+
+  const ok = row => {
+    if (state  && (row['State']||'').trim()  !== state)  return false;
+    if (region && (row['Region']||'').trim() !== region) return false;
+    if (type   && (row['Project_Type']||'').trim() !== type) return false;
+    if (q) {
+      const blob = [row['Project_Name'],row['Agency'],row['Location'],row['City'],row['State'],
+                    row['Heading'],row['Summary'],row['Scope'],row['Text'],row['Validation_Notes']]
+                   .join(' ').toLowerCase();
+      if (!blob.includes(q)) return false;
+    }
+    return true;
+  };
+
+  filtered.approved = approved.filter(ok);
+  filtered.rejected = rejected.filter(ok);
+  filtered.failed   = failed.filter(ok);
+  pages = { approved:1, rejected:1, failed:1 };
+  renderAll();
+}
+
+function clearFilters() {
+  document.getElementById('search-input').value = '';
+  ['state-filter','region-filter','type-filter'].forEach(id => document.getElementById(id).value = '');
+  applyFilters();
+}
+
+// ── SORT ──
+function sortTable(tab, col) {
+  const s = sortState[tab];
+  s.dir = (s.col === col && s.dir === 'asc') ? 'desc' : 'asc';
+  s.col = col;
+  filtered[tab].sort((a,b) => {
+    let va = (a[col]||'').toString().trim();
+    let vb = (b[col]||'').toString().trim();
+    if (col === 'Confidence') { va = parseFloat(va)||0; vb = parseFloat(vb)||0; return s.dir==='asc' ? va-vb : vb-va; }
+    return s.dir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+  });
+  pages[tab] = 1;
+  renderAll();
+}
+
+// ── RENDER ──
+function renderAll() {
+  renderApproved(); renderRejected(); renderFailed();
+  updateCount();
+}
+
+function updateCount() {
+  if (currentTab === 'htmlmap') { document.getElementById('showing-count').textContent = '—'; return; }
+  const n = filtered[currentTab].length;
+  document.getElementById('showing-count').textContent = n.toLocaleString() + ' record' + (n!==1?'s':'');
+}
+
+const truncate = (s,n) => (!s||s==='') ? '—' : s.length>n ? s.slice(0,n)+'…' : s;
+
+function confBar(val) {
+  const v = parseFloat(val)||0, pct = (v*100).toFixed(0);
+  const col = v>=0.8 ? 'bg-emerald-500' : v>=0.5 ? 'bg-amber-400' : 'bg-red-400';
+  return `<div class="flex items-center gap-2 min-w-24">
+    <div class="flex-1 h-1.5 bg-zinc-100 rounded-full"><div class="h-full rounded-full ${col}" style="width:${pct}%"></div></div>
+    <span class="mono text-xs text-zinc-500 w-7 text-right">${pct}%</span>
+  </div>`;
+}
+
+function qBadge(q) {
+  const c = q==='Good'?'q-good':q==='Fair'?'q-fair':'q-poor';
+  return `<span class="text-xs px-1.5 py-0.5 rounded-full font-medium ${c}">${q||'—'}</span>`;
+}
+
+function docDots(row) {
+  const d = [
+    ['Has_Plans_Specs','Plans & Specs'],
+    ['Has_Bidding_Docs','Bidding Docs'],
+    ['Has_PHL','PHL'],
+    ['Has_PBSI','PBSI'],
+  ];
+  return `<div class="flex gap-1">${d.map(([k,lbl]) => {
+    const on = row[k]==='True';
+    return `<span class="tooltip-wrap"><span class="tooltip-tip">${lbl}</span><span class="inline-flex items-center justify-center w-5 h-5 rounded text-xs font-bold ${on?'bg-emerald-100 text-emerald-700':'bg-zinc-100 text-zinc-300'}">${on?'✓':'—'}</span></span>`;
+  }).join('')}</div>`;
+}
+
+function linkIcon(url) {
+  if (!url || !url.startsWith('http')) return '<span class="text-zinc-200">—</span>';
+  return `<a href="${url}" target="_blank" onclick="event.stopPropagation()" class="text-zinc-300 hover:text-zinc-600 transition-colors" title="${url}">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+  </a>`;
+}
+
+function paginate(tab) {
+  const data = filtered[tab];
+  const page = pages[tab];
+  const total = data.length;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const start = (page-1) * PAGE_SIZE;
+  const slice = data.slice(start, start + PAGE_SIZE);
+
+  const paginationEl = document.getElementById(tab + '-pagination');
+  if (totalPages <= 1) { paginationEl.innerHTML = ''; return slice; }
+
+  paginationEl.innerHTML = `
+    <span class="text-xs text-zinc-400 mono">Page ${page} of ${totalPages} &nbsp;·&nbsp; ${total.toLocaleString()} records</span>
+    <div class="flex items-center gap-1">
+      <button onclick="goPage('${tab}',${page-1})" ${page<=1?'disabled':''} class="px-3 py-1 text-xs border border-zinc-200 rounded-lg text-zinc-600 hover:border-zinc-300 disabled:opacity-30 disabled:cursor-not-allowed bg-white">← Prev</button>
+      <button onclick="goPage('${tab}',${page+1})" ${page>=totalPages?'disabled':''} class="px-3 py-1 text-xs border border-zinc-200 rounded-lg text-zinc-600 hover:border-zinc-300 disabled:opacity-30 disabled:cursor-not-allowed bg-white">Next →</button>
+    </div>`;
+  return slice;
+}
+
+function goPage(tab, p) {
+  const max = Math.ceil(filtered[tab].length / PAGE_SIZE);
+  pages[tab] = Math.max(1, Math.min(p, max));
+  renderAll();
+  document.getElementById('tab-'+tab).scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+function renderApproved() {
+  const slice = paginate('approved');
+  const tbody = document.getElementById('approved-tbody');
+  const emptyEl = document.getElementById('approved-empty');
+
+  if (!filtered.approved.length) { tbody.innerHTML=''; emptyEl.classList.remove('hidden'); return; }
+  emptyEl.classList.add('hidden');
+
+  tbody.innerHTML = slice.map((row,i) => {
+    const url  = (row['Web Page']||'').trim();
+    const name = row['Project_Name'] || row['Heading'] || '—';
+    const loc  = [row['City'],row['State']].filter(Boolean).join(', ') || row['Location'] || '—';
+    const globalIdx = (pages.approved-1)*PAGE_SIZE + i;
+    return `<tr class="data-row border-b border-zinc-100 cursor-pointer" onclick="openModal('approved',${globalIdx})">
+      <td class="px-4 py-3 max-w-xs">
+        <div class="font-medium text-zinc-900 text-sm leading-snug">${truncate(name,65)}</div>
+        ${row['Scope'] ? `<div class="text-xs text-zinc-400 mt-0.5 leading-snug">${truncate(row['Scope'],90)}</div>` : ''}
+      </td>
+      <td class="px-4 py-3 text-xs text-zinc-600 max-w-[180px]">${truncate(row['Agency'],45)}</td>
+      <td class="px-4 py-3 text-xs text-zinc-600 whitespace-nowrap">${loc}</td>
+      <td class="px-4 py-3"><span class="text-xs bg-zinc-100 text-zinc-600 px-2 py-0.5 rounded-full whitespace-nowrap">${truncate(row['Project_Type'],28)}</span></td>
+      <td class="px-4 py-3 text-xs mono text-zinc-500 whitespace-nowrap">${truncate(row['Bid_Deadline'],22)}</td>
+      <td class="px-4 py-3">${confBar(row['Confidence'])}</td>
+      <td class="px-4 py-3">${docDots(row)}</td>
+      <td class="px-4 py-3">${linkIcon(url)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderRejected() {
+  const slice = paginate('rejected');
+  const tbody = document.getElementById('rejected-tbody');
+  const emptyEl = document.getElementById('rejected-empty');
+
+  if (!filtered.rejected.length) { tbody.innerHTML=''; emptyEl.classList.remove('hidden'); return; }
+  emptyEl.classList.add('hidden');
+
+  tbody.innerHTML = slice.map((row,i) => {
+    const url = (row['Web Page']||'').trim();
+    const globalIdx = (pages.rejected-1)*PAGE_SIZE + i;
+    return `<tr class="data-row border-b border-zinc-100 cursor-pointer" onclick="openModal('rejected',${globalIdx})">
+      <td class="px-4 py-3 max-w-xs"><div class="text-sm text-zinc-700 leading-snug">${truncate(row['Heading']||row['Text'],70)}</div></td>
+      <td class="px-4 py-3 text-xs text-zinc-500 whitespace-nowrap">${row['State']||'—'}</td>
+      <td class="px-4 py-3 text-xs text-zinc-500">${row['Region']||'—'}</td>
+      <td class="px-4 py-3">${confBar(row['Confidence'])}</td>
+      <td class="px-4 py-3 text-xs text-zinc-500 max-w-xs">${truncate(row['Validation_Notes'],110)}</td>
+      <td class="px-4 py-3">${qBadge(row['Content_Quality'])}</td>
+      <td class="px-4 py-3 text-xs text-zinc-500 max-w-xs"><span title="${(row['Text']||'').replace(/"/g,'&quot;')}">${truncate(row['Text'],120)}</span></td>
+      <td class="px-4 py-3">${linkIcon(url)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderFailed() {
+  const slice = paginate('failed');
+  const tbody = document.getElementById('failed-tbody');
+  const emptyEl = document.getElementById('failed-empty');
+
+  if (!filtered.failed.length) { tbody.innerHTML=''; emptyEl.classList.remove('hidden'); return; }
+  emptyEl.classList.add('hidden');
+
+  tbody.innerHTML = slice.map((row,i) => {
+    const url = (row['Web Page']||'').trim();
+    const globalIdx = (pages.failed-1)*PAGE_SIZE + i;
+    return `<tr class="data-row border-b border-zinc-100 cursor-pointer" onclick="openModal('failed',${globalIdx})">
+      <td class="px-4 py-3 max-w-xs"><div class="text-sm text-zinc-600">${truncate(row['Heading']||row['Text'],70)}</div></td>
+      <td class="px-4 py-3 text-xs text-zinc-500 whitespace-nowrap">${row['State']||'—'}</td>
+      <td class="px-4 py-3 text-xs text-zinc-500">${row['Region']||'—'}</td>
+      <td class="px-4 py-3"><span class="text-xs bg-red-50 text-red-600 px-2 py-0.5 rounded-full">${truncate(row['Extraction_Status'],45)}</span></td>
+      <td class="px-4 py-3">${qBadge(row['Content_Quality'])}</td>
+      <td class="px-4 py-3 text-xs text-zinc-500 max-w-xs"><span title="${(row['Text']||'').replace(/"/g,'&quot;')}">${truncate(row['Text'],120)}</span></td>
+      <td class="px-4 py-3 text-xs mono text-zinc-400 whitespace-nowrap">${row['Processing_Date']||'—'}</td>
+      <td class="px-4 py-3">${linkIcon(url)}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── MODAL ──
+function openModal(tab, idx) {
+  const row = filtered[tab][idx];
+  if (!row) return;
+
+  const handlers = { approved: buildApprovedDetail, rejected: buildRejectedDetail, failed: buildFailedDetail };
+  document.getElementById('modal-title').textContent =
+    tab==='approved' ? (row['Project_Name']||row['Heading']||'Project Details') : truncate(row['Heading']||'Record Details', 80);
+
+  document.getElementById('modal-body').innerHTML = handlers[tab](row);
+
+  const panel = document.getElementById('modal-panel');
+  const overlay = document.getElementById('modal-overlay');
+  panel.classList.remove('hidden'); overlay.classList.remove('hidden');
+  requestAnimationFrame(() => { panel.classList.add('open'); overlay.classList.add('open'); });
+}
+
+function closeModal() {
+  const panel = document.getElementById('modal-panel');
+  const overlay = document.getElementById('modal-overlay');
+  panel.classList.remove('open'); overlay.classList.remove('open');
+  setTimeout(() => { panel.classList.add('hidden'); overlay.classList.add('hidden'); }, 250);
+}
+
+function fld(label, val) {
+  return `<div><div class="text-xs text-zinc-400 mb-0.5">${label}</div><div class="text-sm text-zinc-800 font-medium">${val||'—'}</div></div>`;
+}
+function mfld(label, val) {
+  return `<div><div class="text-xs text-zinc-400">${label}</div><div class="text-xs text-zinc-600 font-medium mt-0.5">${val||'—'}</div></div>`;
+}
+function docCard(label, has) {
+  return `<div class="text-center p-3 rounded-xl border ${has?'bg-emerald-50 border-emerald-200':'bg-zinc-50 border-zinc-200'}">
+    <div class="text-base mb-1 ${has?'text-emerald-600':'text-zinc-300'}">${has?'✓':'—'}</div>
+    <div class="text-xs font-medium ${has?'text-emerald-700':'text-zinc-400'}">${label}</div>
+  </div>`;
+}
+
+function buildApprovedDetail(row) {
+  const conf = parseFloat(row['Confidence'])||0;
+  const pct = (conf*100).toFixed(0);
+  const colCls = conf>=0.8?'bg-emerald-500':conf>=0.5?'bg-amber-400':'bg-red-400';
+  const url = (row['Web Page']||'').trim();
+
+  return `
+  <div class="mb-4 flex flex-wrap gap-2">
+    <span class="inline-flex items-center gap-1 text-xs font-semibold bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full">
+      <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+      LLM Approved
+    </span>
+    ${row['Project_Type']&&row['Project_Type']!=='N/A' ? `<span class="text-xs bg-zinc-100 text-zinc-600 px-2.5 py-1 rounded-full">${row['Project_Type']}</span>` : ''}
+    ${row['Trade'] ? `<span class="text-xs bg-zinc-100 text-zinc-600 px-2.5 py-1 rounded-full">${row['Trade']}</span>` : ''}
+  </div>
+
+  ${row['Summary'] ? `<div class="mb-5 text-sm text-zinc-600 leading-relaxed bg-zinc-50 rounded-xl p-4">${row['Summary']}</div>` : ''}
+
+  <div class="grid grid-cols-2 gap-4 mb-5">
+    ${fld('Agency', row['Agency'])}
+    ${fld('Location', [row['City'],row['State']].filter(Boolean).join(', ')||row['Location'])}
+    ${fld('Region', row['Region'])}
+    ${fld('Bid Deadline', row['Bid_Deadline'])}
+    ${fld('Bid Value', row['Bid_Value'])}
+    ${fld('Confidence', pct + '%')}
+  </div>
+
+  ${row['Scope'] ? `<div class="mb-5">
+    <div class="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">Scope of Work</div>
+    <div class="text-sm text-zinc-700 leading-relaxed">${row['Scope']}</div>
+  </div>` : ''}
+
+  <div class="mb-5">
+    <div class="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-3">Documentation</div>
+    <div class="grid grid-cols-4 gap-2">
+      ${docCard('Plans & Specs', row['Has_Plans_Specs']==='True')}
+      ${docCard('Bidding Docs', row['Has_Bidding_Docs']==='True')}
+      ${docCard('PHL', row['Has_PHL']==='True')}
+      ${docCard('PBSI', row['Has_PBSI']==='True')}
+    </div>
+  </div>
+
+  <div class="mb-5">
+    <div class="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">Confidence Score</div>
+    <div class="flex items-center gap-3">
+      <div class="flex-1 h-2 bg-zinc-100 rounded-full"><div class="h-full rounded-full ${colCls}" style="width:${pct}%"></div></div>
+      <span class="mono text-sm font-bold text-zinc-700">${pct}%</span>
+    </div>
+  </div>
+
+  ${row['Validation_Notes'] ? `<div class="mb-5">
+    <div class="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">Validation Notes</div>
+    <div class="text-xs mono text-zinc-500 bg-zinc-50 rounded-xl p-3 leading-relaxed">${row['Validation_Notes']}</div>
+  </div>` : ''}
+
+  ${url ? `<a href="${url}" target="_blank" class="inline-flex items-center gap-2 text-sm text-white bg-zinc-900 hover:bg-zinc-700 transition-colors px-4 py-2.5 rounded-xl font-medium mb-5">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+    View Source Page
+  </a>` : ''}
+
+  <div class="pt-4 border-t border-zinc-100 grid grid-cols-3 gap-3">
+    ${mfld('Content Quality', row['Content_Quality'])}
+    ${mfld('Method Used', row['Method_Used'])}
+    ${mfld('Processed', row['Processing_Date'])}
+    ${mfld('Char Length', row['Character_Length']?Number(row['Character_Length']).toLocaleString():'—')}
+    ${mfld('Word Count', row['Word_Count']?Number(row['Word_Count']).toLocaleString():'—')}
+    ${mfld('Used LLM', row['Used_LLM'])}
+  </div>`;
+}
+
+function buildRejectedDetail(row) {
+  const conf = parseFloat(row['Confidence'])||0;
+  const pct = (conf*100).toFixed(0);
+  const colCls = conf>=0.8?'bg-emerald-500':conf>=0.5?'bg-amber-400':'bg-red-400';
+  const url = (row['Web Page']||'').trim();
+
+  return `
+  <div class="mb-4">
+    <span class="inline-flex items-center gap-1 text-xs font-semibold bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full">
+      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      LLM Rejected
+    </span>
+  </div>
+
+  ${row['Validation_Notes'] ? `<div class="mb-5 bg-amber-50 border border-amber-200 rounded-xl p-4">
+    <div class="text-xs font-semibold text-amber-700 mb-1 uppercase tracking-wide">Rejection Reason</div>
+    <div class="text-sm text-amber-900 leading-relaxed">${row['Validation_Notes']}</div>
+  </div>` : ''}
+
+  <div class="grid grid-cols-2 gap-4 mb-5">
+    ${fld('State', row['State'])}
+    ${fld('Region', row['Region'])}
+    ${fld('Location', row['Location'])}
+    ${fld('Processing Date', row['Processing_Date'])}
+  </div>
+
+  <div class="mb-5">
+    <div class="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">Confidence Score</div>
+    <div class="flex items-center gap-3">
+      <div class="flex-1 h-2 bg-zinc-100 rounded-full"><div class="h-full rounded-full ${colCls}" style="width:${pct}%"></div></div>
+      <span class="mono text-sm font-bold text-zinc-700">${pct}%</span>
+    </div>
+  </div>
+
+  ${url ? `<a href="${url}" target="_blank" class="inline-flex items-center gap-2 text-sm text-white bg-zinc-900 hover:bg-zinc-700 transition-colors px-4 py-2.5 rounded-xl font-medium mb-5">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+    View Source Page
+  </a>` : ''}
+
+  <div class="pt-4 border-t border-zinc-100 grid grid-cols-3 gap-3">
+    ${mfld('Content Quality', row['Content_Quality'])}
+    ${mfld('Method Used', row['Method_Used'])}
+    ${mfld('Char Length', row['Character_Length']?Number(row['Character_Length']).toLocaleString():'—')}
+    ${mfld('Word Count', row['Word_Count']?Number(row['Word_Count']).toLocaleString():'—')}
+    ${mfld('Used LLM', row['Used_LLM'])}
+    ${mfld('Extraction Status', row['Extraction_Status'])}
+  </div>
+
+  ${row['Text'] ? `<div class="mt-5">
+    <div class="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">Text</div>
+    <div class="text-xs text-zinc-600 bg-zinc-50 rounded-xl p-3 leading-relaxed max-h-48 overflow-y-auto whitespace-pre-wrap">${row['Text']}</div>
+  </div>` : ''}`;
+}
+
+function buildFailedDetail(row) {
+  const url = (row['Web Page']||'').trim();
+  return `
+  <div class="mb-4">
+    <span class="inline-flex items-center gap-1 text-xs font-semibold bg-red-100 text-red-700 px-2.5 py-1 rounded-full">
+      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      Failed Extraction
+    </span>
+  </div>
+
+  ${row['Extraction_Status'] ? `<div class="mb-5 bg-red-50 border border-red-200 rounded-xl p-4">
+    <div class="text-xs font-semibold text-red-700 mb-1 uppercase tracking-wide">Failure Reason</div>
+    <div class="text-sm text-red-800 mono">${row['Extraction_Status']}</div>
+  </div>` : ''}
+
+  <div class="grid grid-cols-2 gap-4 mb-5">
+    ${fld('Heading', truncate(row['Heading'],80))}
+    ${fld('State', row['State'])}
+    ${fld('Region', row['Region'])}
+    ${fld('Processing Date', row['Processing_Date'])}
+    ${fld('Processing Status', row['Processing_Status'])}
+    ${fld('Content Quality', row['Content_Quality'])}
+  </div>
+
+  ${url ? `<a href="${url}" target="_blank" class="inline-flex items-center gap-2 text-sm text-white bg-zinc-900 hover:bg-zinc-700 transition-colors px-4 py-2.5 rounded-xl font-medium mb-5">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+    View Source Page
+  </a>` : ''}
+
+  <div class="pt-4 border-t border-zinc-100 grid grid-cols-2 gap-3">
+    ${mfld('Method Used', row['Method_Used'])}
+    ${mfld('Char Length', row['Character_Length']?Number(row['Character_Length']).toLocaleString():'—')}
+  </div>
+
+  ${row['Text'] ? `<div class="mt-5">
+    <div class="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">Text</div>
+    <div class="text-xs text-zinc-600 bg-zinc-50 rounded-xl p-3 leading-relaxed max-h-48 overflow-y-auto whitespace-pre-wrap">${row['Text']}</div>
+  </div>` : ''}`;
+}
+
+// ── TABS ──
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+  document.querySelector(`.tab-btn[onclick="switchTab('${tab}')"]`).classList.add('active');
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+  document.getElementById('tab-'+tab).classList.remove('hidden');
+  document.querySelectorAll('.approved-only').forEach(el => el.classList.toggle('hidden', tab!=='approved'));
+  document.getElementById('filter-bar').classList.toggle('hidden', tab==='htmlmap');
+  if (tab === 'htmlmap') { aggregateByState(); initMap(); renderMapStateTable(); updateMapSummary(); renderHTMLChanges(); }
+  updateCount();
+}
+
+// ── EXPORT ──
+function exportCSV() {
+  const data = filtered[currentTab];
+  if (!data.length) return;
+  // Exclude Formatted_Content (very large) from export
+  const exclude = new Set(['Formatted_Content']);
+  const keys = Object.keys(data[0]).filter(k => !exclude.has(k));
+  const csv = [keys.join(','), ...data.map(row =>
+    keys.map(k => { const v = (row[k]||'').toString().replace(/"/g,'""'); return `"${v}"`; }).join(',')
+  )].join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
+  a.download = `blackridge_${currentTab}_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+// ── RESET ──
+function resetDashboard() {
+  allData=[]; approved=[]; rejected=[]; failed=[];
+  filtered={approved:[],rejected:[],failed:[]};
+  pages={approved:1,rejected:1,failed:1};
+  sortState={approved:{col:'',dir:'asc'},rejected:{col:'',dir:'asc'},failed:{col:'',dir:'asc'}};
+  stateData={}; mapMode='total'; mapRendered=false;
+  htmlData=[]; htmlLoaded=false; htmlFileName='';
+  urlToCSVRows={};
+  currentTab='htmlmap';
+  ['state-filter','region-filter','type-filter'].forEach(id => {
+    const el=document.getElementById(id); if(el){while(el.options.length>1) el.remove(1); el.value='';}
+  });
+  const si=document.getElementById('search-input'); if(si) si.value='';
+  document.getElementById('html-groups').innerHTML='';
+  document.getElementById('tc-html').textContent='0';
+  const hs=document.getElementById('html-search'); if(hs) hs.value='';
+  const hf=document.getElementById('html-folder-filter'); if(hf){while(hf.options.length>1) hf.remove(1);}
+  document.getElementById('dashboard').classList.add('hidden');
+  document.getElementById('upload-screen').classList.remove('hidden');
+  document.getElementById('load-error').classList.add('hidden');
+  autoLoadFiles();
+}
+
+// ── KEYBOARD ──
+document.addEventListener('keydown', e => { if(e.key==='Escape') closeModal(); });
+
+// ── MAP ──
+const FIPS_TO_ABBR = {
+  "01":"AL","02":"AK","04":"AZ","05":"AR","06":"CA","08":"CO","09":"CT",
+  "10":"DE","11":"DC","12":"FL","13":"GA","15":"HI","16":"ID","17":"IL",
+  "18":"IN","19":"IA","20":"KS","21":"KY","22":"LA","23":"ME","24":"MD",
+  "25":"MA","26":"MI","27":"MN","28":"MS","29":"MO","30":"MT","31":"NE",
+  "32":"NV","33":"NH","34":"NJ","35":"NM","36":"NY","37":"NC","38":"ND",
+  "39":"OH","40":"OK","41":"OR","42":"PA","44":"RI","45":"SC","46":"SD",
+  "47":"TN","48":"TX","49":"UT","50":"VT","51":"VA","53":"WA","54":"WV",
+  "55":"WI","56":"WY"
+};
+const ABBR_TO_NAME = {
+  "AL":"Alabama","AK":"Alaska","AZ":"Arizona","AR":"Arkansas","CA":"California",
+  "CO":"Colorado","CT":"Connecticut","DE":"Delaware","DC":"District of Columbia",
+  "FL":"Florida","GA":"Georgia","HI":"Hawaii","ID":"Idaho","IL":"Illinois",
+  "IN":"Indiana","IA":"Iowa","KS":"Kansas","KY":"Kentucky","LA":"Louisiana",
+  "ME":"Maine","MD":"Maryland","MA":"Massachusetts","MI":"Michigan","MN":"Minnesota",
+  "MS":"Mississippi","MO":"Missouri","MT":"Montana","NE":"Nebraska","NV":"Nevada",
+  "NH":"New Hampshire","NJ":"New Jersey","NM":"New Mexico","NY":"New York",
+  "NC":"North Carolina","ND":"North Dakota","OH":"Ohio","OK":"Oklahoma","OR":"Oregon",
+  "PA":"Pennsylvania","RI":"Rhode Island","SC":"South Carolina","SD":"South Dakota",
+  "TN":"Tennessee","TX":"Texas","UT":"Utah","VT":"Vermont","VA":"Virginia",
+  "WA":"Washington","WV":"West Virginia","WI":"Wisconsin","WY":"Wyoming"
+};
+
+let stateData = {};
+let mapMode = 'total';
+let usTopoData = null;
+let mapRendered = false;
+
+function aggregateByState() {
+  stateData = {};
+  for (const row of allData) {
+    const st = (row['State']||'').trim().toUpperCase();
+    if (!st || st.length !== 2 || !ABBR_TO_NAME[st]) continue;
+    if (!stateData[st]) stateData[st] = { total:0, approved:0, rejected:0, failed:0, htmlChanges:0 };
+    stateData[st].total++;
+    const status = (row['Processing_Status']||'').trim();
+    const isProj  = (row['Is_Project']||'').trim();
+    if (status === 'Failed') stateData[st].failed++;
+    else if (isProj === 'True') stateData[st].approved++;
+    else stateData[st].rejected++;
+  }
+  for (const item of htmlData) {
+    const st = item.groupKey.trim().toUpperCase();
+    if (!ABBR_TO_NAME[st]) continue;
+    if (!stateData[st]) stateData[st] = { total:0, approved:0, rejected:0, failed:0, htmlChanges:0 };
+    stateData[st].htmlChanges = (stateData[st].htmlChanges || 0) + 1;
+  }
+}
+
+async function initMap() {
+  if (!usTopoData) {
+    const container = document.getElementById('map-svg-container');
+    container.innerHTML = '<div class="text-center py-20 text-zinc-400 text-sm">Fetching map data…</div>';
+    try {
+      usTopoData = await d3.json('https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json');
+    } catch(e) {
+      container.innerHTML = '<div class="text-center py-20 text-red-400 text-sm">Failed to load map — check internet connection.</div>';
+      return;
+    }
+  }
+  renderMap();
+}
+
+function renderMap() {
+  const container = document.getElementById('map-svg-container');
+  container.innerHTML = '';
+
+  const w = container.clientWidth || 860;
+  const h = Math.round(w * 0.60);
+
+  const projection = d3.geoAlbersUsa()
+    .scale(w * 1.28)
+    .translate([w / 2, h / 2]);
+  const path = d3.geoPath().projection(projection);
+
+  const allVals = Object.values(stateData).map(d => d[mapMode]).filter(v => v > 0);
+  const maxVal = allVals.length ? Math.max(...allVals) : 1;
+
+  const palettes = {
+    total:    [d3.interpolateRgb('#f4f4f5', '#18181b'), '#f4f4f5'],
+    approved: [d3.interpolateRgb('#dcfce7', '#14532d'), '#f0fdf4'],
+    rejected: [d3.interpolateRgb('#fef9c3', '#92400e'), '#fffbeb'],
+    failed:   [d3.interpolateRgb('#ffe4e6', '#9f1239'), '#fff1f2'],
+  };
+  const [interpFn, zeroColor] = palettes[mapMode];
+  const colorFn = v => v > 0 ? interpFn(Math.pow(v / maxVal, 0.55)) : zeroColor;
+
+  const svg = d3.select(container)
+    .append('svg')
+    .attr('viewBox', `0 0 ${w} ${h}`)
+    .style('width','100%')
+    .style('display','block');
+
+  const states = topojson.feature(usTopoData, usTopoData.objects.states);
+  const mesh   = topojson.mesh(usTopoData, usTopoData.objects.states, (a,b) => a !== b);
+  const nation = topojson.merge(usTopoData, usTopoData.objects.states.geometries);
+
+  // State fills
+  svg.append('g')
+    .selectAll('path')
+    .data(states.features)
+    .join('path')
+    .attr('d', path)
+    .attr('fill', d => {
+      const abbr = FIPS_TO_ABBR[String(d.id).padStart(2, '0')];
+      return colorFn((stateData[abbr] || {})[mapMode] || 0);
+    })
+    .attr('cursor', 'pointer')
+    .on('mouseenter', function(event, d) {
+      d3.select(this).attr('stroke','#52525b').attr('stroke-width', 1.5);
+      const abbr = FIPS_TO_ABBR[String(d.id).padStart(2, '0')];
+      showMapTip(event, abbr);
+    })
+    .on('mousemove', moveMapTip)
+    .on('mouseleave', function() {
+      d3.select(this).attr('stroke', null).attr('stroke-width', null);
+      hideMapTip();
+    })
+    .on('click', function(event, d) {
+      const abbr = FIPS_TO_ABBR[String(d.id).padStart(2, '0')];
+      hideMapTip();
+      showStateDetail(abbr);
+    });
+
+  // Inner borders (state lines)
+  svg.append('path')
+    .datum(mesh)
+    .attr('d', path)
+    .attr('fill', 'none')
+    .attr('stroke', '#ffffff')
+    .attr('stroke-width', 0.7)
+    .attr('pointer-events', 'none');
+
+  // Outer border (nation edge)
+  svg.append('path')
+    .datum(nation)
+    .attr('d', path)
+    .attr('fill', 'none')
+    .attr('stroke', '#d4d4d8')
+    .attr('stroke-width', 0.8)
+    .attr('pointer-events', 'none');
+
+  renderMapLegend(interpFn, maxVal);
+  mapRendered = true;
+}
+
+function renderMapLegend(interpFn, maxVal) {
+  const labels = {
+    total:'Total Updates', approved:'LLM Approved', rejected:'LLM Rejected', failed:'Failed Extraction'
+  };
+  const steps = 7;
+  const swatches = Array.from({length:steps}, (_,i) => {
+    const v = Math.round(maxVal * i / (steps-1));
+    const bg = interpFn(Math.pow(i/(steps-1), 0.55) || 0.001);
+    return `<div class="flex-1 text-center">
+      <div class="h-3 rounded mb-1" style="background:${bg}"></div>
+      <span class="mono text-xs text-zinc-400">${v}</span>
+    </div>`;
+  }).join('');
+  document.getElementById('map-legend').innerHTML =
+    `<div class="flex items-center gap-4 mt-3 px-1">
+      <span class="text-xs text-zinc-500 whitespace-nowrap font-medium">${labels[mapMode]}</span>
+      <div class="flex-1 flex gap-0.5">${swatches}</div>
+    </div>`;
+}
+
+function showMapTip(event, abbr) {
+  const sd = stateData[abbr] || {total:0, approved:0, rejected:0, failed:0, htmlChanges:0};
+  const name = ABBR_TO_NAME[abbr] || abbr || 'Unknown';
+  const ap = sd.total ? (sd.approved/sd.total*100).toFixed(1) : 0;
+  const rj = sd.total ? (sd.rejected/sd.total*100).toFixed(1) : 0;
+  const fa = sd.total ? (sd.failed/sd.total*100).toFixed(1)   : 0;
+  const tip = document.getElementById('map-tooltip');
+  tip.innerHTML = `
+    <div class="flex items-baseline justify-between mb-3">
+      <span class="font-semibold text-zinc-900 text-sm">${name}</span>
+      <span class="mono text-xs text-zinc-400 ml-2">${abbr||''}</span>
+    </div>
+    <div class="text-2xl font-bold mono text-zinc-900 mb-3">${sd.total.toLocaleString()}
+      <span class="text-xs font-normal text-zinc-400">updates</span>
+    </div>
+    <div class="space-y-2 text-xs">
+      <div class="flex items-center justify-between">
+        <span class="flex items-center gap-1.5 text-zinc-600"><span class="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>Approved</span>
+        <span class="mono font-semibold text-emerald-700">${sd.approved.toLocaleString()} <span class="text-zinc-400 font-normal">(${ap}%)</span></span>
+      </div>
+      <div class="flex items-center justify-between">
+        <span class="flex items-center gap-1.5 text-zinc-600"><span class="w-2 h-2 rounded-full bg-amber-400 inline-block"></span>Rejected</span>
+        <span class="mono font-semibold text-amber-700">${sd.rejected.toLocaleString()} <span class="text-zinc-400 font-normal">(${rj}%)</span></span>
+      </div>
+      <div class="flex items-center justify-between">
+        <span class="flex items-center gap-1.5 text-zinc-600"><span class="w-2 h-2 rounded-full bg-red-400 inline-block"></span>Failed</span>
+        <span class="mono font-semibold text-red-700">${sd.failed.toLocaleString()} <span class="text-zinc-400 font-normal">(${fa}%)</span></span>
+      </div>
+    </div>
+    ${sd.total > 0
+      ? `<div class="mt-3 h-2 rounded-full overflow-hidden bg-zinc-100 flex">
+           <div class="bg-emerald-500 h-full transition-all" style="width:${ap}%"></div>
+           <div class="bg-amber-400 h-full transition-all"  style="width:${rj}%"></div>
+           <div class="bg-red-400 h-full transition-all"   style="width:${fa}%"></div>
+         </div>`
+      : '<div class="mt-3 text-xs text-zinc-300 text-center">No CSV records for this state</div>'
+    }
+    ${sd.htmlChanges
+      ? `<div class="mt-2 pt-2 border-t border-zinc-100 flex items-center justify-between">
+           <span class="text-xs text-zinc-500 flex items-center gap-1.5"><span class="w-2 h-2 rounded bg-sky-400 inline-block"></span>HTML Changes</span>
+           <span class="mono text-xs font-semibold text-sky-700">${sd.htmlChanges}</span>
+         </div>`
+      : ''}
+    <div class="mt-2 text-xs text-zinc-300 text-center">Click to see details</div>`;
+  tip.classList.remove('hidden');
+  moveMapTip(event);
+}
+
+function moveMapTip(event) {
+  const tip = document.getElementById('map-tooltip');
+  const x = event.clientX + 16, y = event.clientY - 12;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  tip.style.left = (x + tip.offsetWidth  > vw ? x - tip.offsetWidth  - 32 : x) + 'px';
+  tip.style.top  = (y + tip.offsetHeight > vh ? y - tip.offsetHeight + 20 : y) + 'px';
+}
+
+function hideMapTip() {
+  document.getElementById('map-tooltip').classList.add('hidden');
+}
+
+function setMapMode(mode) {
+  mapMode = mode;
+  document.querySelectorAll('.map-mode-btn').forEach(b => {
+    const active = b.dataset.mode === mode;
+    b.classList.toggle('bg-zinc-900', active);
+    b.classList.toggle('text-white',  active);
+    b.classList.toggle('bg-white',    !active);
+    b.classList.toggle('text-zinc-600', !active);
+  });
+  if (mapRendered) renderMap();
+}
+
+function renderMapStateTable() {
+  const sorted = Object.entries(stateData).sort((a,b) => b[1].total - a[1].total);
+  const el = document.getElementById('map-state-table');
+  if (!sorted.length) { el.innerHTML = '<div class="text-xs text-zinc-300 py-8 text-center">No state data</div>'; return; }
+  el.innerHTML = sorted.map(([abbr, sd], i) => {
+    const ap = sd.total ? sd.approved/sd.total*100 : 0;
+    const rj = sd.total ? sd.rejected/sd.total*100 : 0;
+    const fa = sd.total ? sd.failed/sd.total*100   : 0;
+    return `<div class="py-3 border-b border-zinc-100 last:border-0 cursor-pointer hover:bg-zinc-50 -mx-1 px-1 rounded-lg transition-colors" onclick="showStateDetail('${abbr}')">
+      <div class="flex items-center justify-between mb-1.5">
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="mono text-xs text-zinc-300 w-5 text-right flex-shrink-0">${i+1}</span>
+          <span class="font-semibold text-zinc-800 text-sm truncate">${ABBR_TO_NAME[abbr]||abbr}</span>
+          <span class="mono text-xs text-zinc-400 flex-shrink-0">${abbr}</span>
+        </div>
+        <div class="flex items-center gap-1.5 flex-shrink-0 ml-2">
+          ${(sd.htmlChanges||0) > 0 ? `<span class="mono text-xs bg-sky-100 text-sky-600 px-1.5 py-0.5 rounded font-medium">${sd.htmlChanges}↗</span>` : ''}
+          <span class="mono text-sm font-bold text-zinc-900">${sd.total.toLocaleString()}</span>
+        </div>
+      </div>
+      <div class="pl-7">
+        <div class="h-1.5 rounded-full bg-zinc-100 overflow-hidden flex mb-1.5">
+          <div class="bg-emerald-500 h-full" style="width:${ap.toFixed(1)}%"></div>
+          <div class="bg-amber-400  h-full" style="width:${rj.toFixed(1)}%"></div>
+          <div class="bg-red-400    h-full" style="width:${fa.toFixed(1)}%"></div>
+        </div>
+        <div class="flex gap-3 text-xs">
+          <span class="text-emerald-600 font-medium">${sd.approved.toLocaleString()} <span class="text-zinc-400 font-normal">ok</span></span>
+          <span class="text-amber-600  font-medium">${sd.rejected.toLocaleString()} <span class="text-zinc-400 font-normal">rej</span></span>
+          <span class="text-red-500    font-medium">${sd.failed.toLocaleString()} <span class="text-zinc-400 font-normal">fail</span></span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function updateMapSummary() {
+  const entries = Object.entries(stateData);
+  if (!entries.length) return;
+  // Elements may not exist in the new combined layout — guard silently
+  const s1=document.getElementById('map-stat-states'), s2=document.getElementById('map-stat-top'), s3=document.getElementById('map-stat-avg');
+  if (!s1) return;
+  const totalRecs = entries.reduce((s,[,d]) => s+d.total, 0);
+  const topEntry  = [...entries].sort((a,b) => b[1].total-a[1].total)[0];
+  s1.textContent = entries.length;
+  s2.textContent = topEntry ? `${ABBR_TO_NAME[topEntry[0]]||topEntry[0]} (${topEntry[1].total})` : '—';
+  s3.textContent = (totalRecs / entries.length).toFixed(1);
+}
+
+// ── HTML STAT HELPERS ──
+function updateHTMLChangesStat() {
+  document.getElementById('s-html-changes').textContent = htmlData.length.toLocaleString();
+  document.getElementById('tc-html').textContent = htmlData.length.toLocaleString();
+}
+
+function updateHTMLClassStats() {
+  let totAp = 0, totRj = 0, totFa = 0;
+  for (const item of htmlData) {
+    const m = urlToCSVRows[normalizeURL(item.url)];
+    if (!m) continue;
+    totAp += m.approved.length;
+    totRj += m.rejected.length;
+    totFa += m.failed.length;
+  }
+  const tot = totAp + totRj + totFa || 1;
+  const el = id => document.getElementById(id);
+  el('hc-approved').textContent = totAp.toLocaleString();
+  el('hc-rejected').textContent = totRj.toLocaleString();
+  el('hc-failed').textContent   = totFa.toLocaleString();
+  el('hcbar-approved').style.width = (totAp/tot*100).toFixed(1) + '%';
+  el('hcbar-rejected').style.width = (totRj/tot*100).toFixed(1) + '%';
+  el('hcbar-failed').style.width   = (totFa/tot*100).toFixed(1) + '%';
+}
+
+function filterHTMLChangesByState(abbr) {
+  const sel = document.getElementById('html-folder-filter');
+  if (sel) sel.value = abbr || '';
+  renderHTMLChanges();
+  const indicator = document.getElementById('html-active-state');
+  const label     = document.getElementById('html-active-state-label');
+  if (abbr && ABBR_TO_NAME[abbr]) {
+    label.textContent = abbr + ' — ' + ABBR_TO_NAME[abbr];
+    indicator.classList.remove('hidden');
+    setTimeout(() => {
+      const hg = document.getElementById('html-groups');
+      if (hg) hg.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+  } else {
+    indicator.classList.add('hidden');
+  }
+}
+
+// ── URL INDEX (CSV ↔ HTML matching) ──
+function normalizeURL(url) {
+  return (url || '').trim().replace(/\/+$/, '').toLowerCase();
+}
+
+function buildURLIndex() {
+  urlToCSVRows = {};
+  for (const row of allData) {
+    const webPage = normalizeURL(row['Web Page']);
+    const link    = normalizeURL(row['Link'] || '');
+    const status  = (row['Processing_Status'] || '').trim();
+    const isProj  = (row['Is_Project'] || '').trim();
+    const cat = status === 'Failed' ? 'failed' : isProj === 'True' ? 'approved' : 'rejected';
+    for (const key of [webPage, link].filter(Boolean)) {
+      if (!urlToCSVRows[key]) urlToCSVRows[key] = { approved:[], rejected:[], failed:[] };
+      urlToCSVRows[key][cat].push(row);
+    }
+  }
+}
+
+// ── STATE DETAIL MODAL (map click / sidebar click) ──
+function showStateDetail(abbr) {
+  if (!abbr || !ABBR_TO_NAME[abbr]) return;
+  if (currentTab === 'htmlmap') {
+    // On combined tab: filter the sidebar list instead of opening modal
+    filterHTMLChangesByState(abbr);
+    return;
+  }
+  // On other tabs: open modal with full state detail
+  const sd = stateData[abbr] || { total:0, approved:0, rejected:0, failed:0, htmlChanges:0 };
+  const stateChanges = htmlData.filter(d => d.groupKey.trim().toUpperCase() === abbr);
+  document.getElementById('modal-title').textContent = (ABBR_TO_NAME[abbr] || abbr) + ' — State Detail';
+  document.getElementById('modal-body').innerHTML = buildStateDetailHTML(abbr, sd, stateChanges);
+  const panel = document.getElementById('modal-panel');
+  const overlay = document.getElementById('modal-overlay');
+  panel.classList.remove('hidden'); overlay.classList.remove('hidden');
+  requestAnimationFrame(() => { panel.classList.add('open'); overlay.classList.add('open'); });
+}
+
+function buildStateDetailHTML(abbr, sd, changes) {
+  const fullName = ABBR_TO_NAME[abbr] || abbr;
+  const ap = sd.total ? (sd.approved/sd.total*100).toFixed(1) : 0;
+  const rj = sd.total ? (sd.rejected/sd.total*100).toFixed(1) : 0;
+  const fa = sd.total ? (sd.failed/sd.total*100).toFixed(1)   : 0;
+
+  const csvBlock = sd.total > 0
+    ? `<div class="h-2 rounded-full bg-zinc-100 overflow-hidden flex mb-2">
+        <div class="bg-emerald-500 h-full" style="width:${ap}%"></div>
+        <div class="bg-amber-400 h-full"  style="width:${rj}%"></div>
+        <div class="bg-red-400 h-full"    style="width:${fa}%"></div>
+       </div>
+       <div class="flex gap-4 text-xs">
+         <span class="text-emerald-700 font-semibold">${sd.approved.toLocaleString()} <span class="font-normal text-zinc-400">approved</span></span>
+         <span class="text-amber-600 font-semibold">${sd.rejected.toLocaleString()} <span class="font-normal text-zinc-400">rejected</span></span>
+         <span class="text-red-600 font-semibold">${sd.failed.toLocaleString()} <span class="font-normal text-zinc-400">failed</span></span>
+         <span class="text-zinc-700 font-semibold ml-auto">${sd.total.toLocaleString()} <span class="font-normal text-zinc-400">total</span></span>
+       </div>`
+    : '<div class="text-xs text-zinc-300 py-1">No CSV records for this state</div>';
+
+  const changeCards = changes.length
+    ? changes.map(item => {
+        const idx       = htmlData.indexOf(item);
+        const csvMatch  = urlToCSVRows[normalizeURL(item.url)];
+        const badges    = csvMatch ? [
+          csvMatch.approved.length ? `<span class="text-xs bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full font-medium">${csvMatch.approved.length} Approved</span>` : '',
+          csvMatch.rejected.length ? `<span class="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium">${csvMatch.rejected.length} Rejected</span>` : '',
+          csvMatch.failed.length   ? `<span class="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full font-medium">${csvMatch.failed.length} Failed</span>` : '',
+        ].filter(Boolean).join('') : '';
+        const summary = truncate(item.changeSummary, 160).replace(/\n+/g, ' ');
+        return `<div class="html-card mb-2 bg-white border border-zinc-200 rounded-xl hover:border-zinc-300 hover:shadow-sm transition-all cursor-pointer overflow-hidden"
+                     onclick="showHTMLItemDetail(${idx})">
+          <div class="px-4 py-3">
+            <div class="font-medium text-zinc-900 text-sm leading-snug mb-1">${item.title || 'Untitled'}</div>
+            <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-zinc-400 mb-1.5">
+              <span class="mono">${item.date || '—'}</span>
+              ${item.url ? `<a href="${item.url}" target="_blank" onclick="event.stopPropagation()" class="text-sky-500 hover:text-sky-700 truncate max-w-xs" title="${item.url}">${truncate(item.url,52)}</a>` : ''}
+            </div>
+            ${badges ? `<div class="flex flex-wrap gap-1 mb-1.5">${badges}</div>` : ''}
+            ${summary ? `<div class="text-xs text-zinc-500 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 leading-relaxed mono">${summary}</div>` : ''}
+          </div>
+        </div>`;
+      }).join('')
+    : `<div class="text-xs text-zinc-300 text-center py-8">
+        No HTML changes loaded for this state.<br>
+        <span class="text-zinc-200">Load an HTML report in the HTML Changes tab.</span>
+       </div>`;
+
+  return `
+  <div class="mb-5 pb-5 border-b border-zinc-100">
+    <div class="flex items-baseline gap-2 mb-3">
+      <span class="font-bold text-zinc-900 text-lg">${fullName}</span>
+      <span class="mono text-sm text-zinc-400">${abbr}</span>
+    </div>
+    ${csvBlock}
+  </div>
+
+  <div>
+    <div class="flex items-center gap-2 mb-3">
+      <span class="text-xs font-semibold text-zinc-400 uppercase tracking-wide">HTML Changes</span>
+      ${changes.length ? `<span class="mono text-xs bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full">${changes.length}</span>` : ''}
+    </div>
+    ${changeCards}
+  </div>`;
+}
+
+function showHTMLItemDetail(idx) {
+  const item = htmlData[idx];
+  if (!item) return;
+  document.getElementById('modal-title').textContent = truncate(item.title || 'Change Details', 80);
+  document.getElementById('modal-body').innerHTML = buildHTMLDetail(item);
+  document.getElementById('modal-body').scrollTop = 0;
+}
+
+// ── AUTO LOAD ──
+async function autoLoadFiles() {
+  try {
+    const [csvRes, htmlRes] = await Promise.all([
+      fetch('./Test%207.csv'),
+      fetch('./16-04-2026.html')
+    ]);
+    if (!csvRes.ok || !htmlRes.ok) throw new Error('fetch failed');
+
+    const [csvText, htmlText] = await Promise.all([csvRes.text(), htmlRes.text()]);
+
+    htmlData     = parseHTMLReport(htmlText);
+    htmlFileName = '16-04-2026.html';
+    htmlLoaded   = true;
+
+    Papa.parse(csvText, {
+      header: true,
+      skipEmptyLines: true,
+      complete(res) {
+        allData = res.data;
+        document.getElementById('hdr-filename').textContent = 'Test 7.csv + 16-04-2026.html';
+        processData();
+      }
+    });
+  } catch(e) {
+    document.getElementById('load-error').classList.remove('hidden');
+    // Fallback: wire up manual file inputs
+    const csvFb  = document.getElementById('csv-input-fb');
+    const htmlFb = document.getElementById('html-input-fb');
+    if (csvFb)  csvFb.addEventListener('change',  ev => { if(ev.target.files[0]) loadFile(ev.target.files[0]); });
+    if (htmlFb) htmlFb.addEventListener('change', ev => { if(ev.target.files[0]) loadHTMLFile(ev.target.files[0]); });
+  }
+}
+document.addEventListener('DOMContentLoaded', autoLoadFiles);
+
+// ── HTML CHANGES ──
+
+function loadHTMLFile(file) {
+  htmlFileName = file.name;
+  const reader = new FileReader();
+  reader.onload = evt => {
+    htmlData = parseHTMLReport(evt.target.result);
+    htmlLoaded = true;
+
+    const folders = [...new Set(htmlData.map(d => d.groupKey))].sort();
+    const sel = document.getElementById('html-folder-filter');
+    while (sel.options.length > 1) sel.remove(1);
+    folders.forEach(f => { const o = document.createElement('option'); o.value = o.textContent = f; sel.appendChild(o); });
+
+    document.getElementById('tc-html').textContent = htmlData.length.toLocaleString();
+
+    renderHTMLChanges();
+    updateHTMLChangesStat();
+    if (mapRendered) { aggregateByState(); renderMap(); renderMapStateTable(); }
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+function parseHTMLReport(htmlText) {
+  const doc = (new DOMParser()).parseFromString(htmlText, 'text/html');
+  const results = [];
+
+  function processFolder(folderEl, breadcrumb) {
+    const nameEl = folderEl.querySelector(':scope > .folder-header h2');
+    const name = nameEl ? nameEl.textContent.trim() : '';
+    const path = breadcrumb ? breadcrumb + ' / ' + name : name;
+    const content = folderEl.querySelector(':scope > .folder-content');
+    if (!content) return;
+
+    content.querySelectorAll(':scope > .folder-section').forEach(child => processFolder(child, path));
+
+    content.querySelectorAll(':scope > .bookmark').forEach(bm => {
+      const title = (bm.querySelector('.bookmark-title')?.textContent || '').trim();
+      const metaText = (bm.querySelector('.bookmark-meta')?.textContent || '');
+      const date = metaText.replace('Last updated:', '').trim();
+      const urlEl = bm.querySelector('.bookmark-url a');
+      const url = urlEl ? urlEl.getAttribute('href') : '';
+
+      const summaryEl = bm.querySelectorAll('.changes-section')[0]?.querySelector('.changes');
+      const fullEl    = bm.querySelectorAll('.changes-section')[1]?.querySelector('.changes-full');
+      const changeSummary   = summaryEl ? summaryEl.textContent.trim()  : '';
+      // Fix links to open in new tabs so they don't navigate away from dashboard
+      const fixLinks = html => html.replace(/<a\s/gi, '<a target="_blank" rel="noopener noreferrer" ');
+      const changesFullHTML = fullEl    ? fixLinks(fullEl.innerHTML.trim())   : (summaryEl ? fixLinks(summaryEl.innerHTML.trim()) : '');
+      const changesFullText = fullEl    ? fullEl.textContent.trim()            : '';
+
+      const parts = path.split(' / ');
+      const groupKey = parts[parts.length - 1] || path;
+
+      results.push({ title, date, url, changeSummary, changesFullHTML, changesFullText, path, groupKey });
+    });
+  }
+
+  const allFolderEls = [...doc.querySelectorAll('.folder-section')];
+  const topLevel = allFolderEls.filter(f => !f.closest('.folder-content'));
+  topLevel.forEach(f => processFolder(f, ''));
+  return results;
+}
+
+function renderHTMLChanges() {
+  const q      = (document.getElementById('html-search').value || '').toLowerCase();
+  const folder = document.getElementById('html-folder-filter').value;
+
+  let items = htmlData;
+  if (folder) items = items.filter(d => d.groupKey === folder);
+  if (q) items = items.filter(d =>
+    (d.title + ' ' + d.url + ' ' + d.changeSummary + ' ' + d.changesFullText + ' ' + d.groupKey).toLowerCase().includes(q)
+  );
+
+  window._htmlFiltered = items;
+  const countEl = document.getElementById('html-count');
+  if (countEl) countEl.textContent = items.length.toLocaleString() + ' change' + (items.length !== 1 ? 's' : '');
+
+  const groups = {};
+  items.forEach(item => {
+    if (!groups[item.groupKey]) groups[item.groupKey] = [];
+    groups[item.groupKey].push(item);
+  });
+  const sortedGroups = Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
+
+  const container = document.getElementById('html-groups');
+  if (!container) return;
+
+  if (!items.length) {
+    container.innerHTML = `<div class="text-center py-24 text-zinc-300">
+      <svg class="w-10 h-10 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+      <p class="text-sm text-zinc-400 mt-1">${htmlData.length ? 'No changes match your filters' : 'HTML report not loaded'}</p>
+    </div>`;
+    return;
+  }
+
+  container.innerHTML = sortedGroups.map(([groupKey, groupItems]) => {
+    const fullName = ABBR_TO_NAME[groupKey] ? groupKey + ' — ' + ABBR_TO_NAME[groupKey] : groupKey;
+
+    const cards = groupItems.map(item => {
+      const globalIdx   = items.indexOf(item);
+      const csvMatch    = urlToCSVRows[normalizeURL(item.url)];
+      const hasApproved = csvMatch && csvMatch.approved.length > 0;
+      const hasRejected = csvMatch && csvMatch.rejected.length > 0;
+      const hasFailed   = csvMatch && csvMatch.failed.length > 0;
+
+      // Top color bar: green if any approved, red if failed only, amber if rejected, zinc if no match
+      const topColor = !csvMatch
+        ? '#e4e4e7'
+        : hasApproved ? '#10b981'
+        : hasFailed   ? '#f87171'
+        : '#fbbf24';
+
+      const badges = csvMatch ? [
+        hasApproved ? `<span class="inline-flex items-center gap-1 text-xs font-semibold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full whitespace-nowrap"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span>${csvMatch.approved.length} Approved</span>` : '',
+        hasRejected ? `<span class="inline-flex items-center gap-1 text-xs font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full whitespace-nowrap"><span class="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block"></span>${csvMatch.rejected.length} Rejected</span>` : '',
+        hasFailed   ? `<span class="inline-flex items-center gap-1 text-xs font-semibold bg-red-100 text-red-700 px-2 py-0.5 rounded-full whitespace-nowrap"><span class="w-1.5 h-1.5 rounded-full bg-red-400 inline-block"></span>${csvMatch.failed.length} Failed</span>` : '',
+      ].filter(Boolean).join('') : '';
+
+      let displayURL = '';
+      if (item.url) {
+        try {
+          const u = new URL(item.url);
+          displayURL = u.hostname + (u.pathname && u.pathname.length > 1 ? u.pathname.slice(0, 40) : '');
+        } catch { displayURL = item.url.slice(0, 55); }
+      }
+
+      return `<div class="group bg-white border border-zinc-200 rounded-2xl overflow-hidden cursor-pointer hover:shadow-lg hover:border-zinc-300 transition-all duration-150"
+                   onclick="openHTMLModal(${globalIdx})">
+        <div class="h-1.5" style="background:${topColor}"></div>
+        <div class="p-4">
+          <!-- Badge row + external link -->
+          <div class="flex items-start justify-between gap-2 mb-3">
+            <div class="flex flex-wrap gap-1.5 flex-1 min-w-0">
+              ${badges || '<span class="text-xs text-zinc-300 italic">Not in dataset</span>'}
+            </div>
+            ${item.url ? `<a href="${item.url}" target="_blank" onclick="event.stopPropagation()"
+               class="flex-shrink-0 p-1.5 rounded-lg border border-zinc-100 text-zinc-400 hover:text-zinc-700 hover:border-zinc-300 transition-all" title="Open source page">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+            </a>` : ''}
+          </div>
+          <!-- Title -->
+          <div class="font-semibold text-zinc-900 text-sm leading-snug mb-1 group-hover:text-zinc-600 transition-colors" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${item.title || 'Untitled'}</div>
+          <!-- URL -->
+          ${displayURL ? `<div class="mono text-xs text-sky-500 truncate mb-3" title="${item.url}">${displayURL}</div>` : '<div class="mb-3"></div>'}
+          <!-- Actual HTML changes — links, ins/del, formatted content -->
+          ${item.changesFullHTML ? `<div class="changes-viewer border border-zinc-200 rounded-xl p-3 text-xs leading-relaxed overflow-y-auto bg-zinc-50" style="max-height:180px" onclick="event.stopPropagation()">${item.changesFullHTML}</div>` : ''}
+          <!-- Date -->
+          <div class="mt-3 mono text-xs text-zinc-300">${item.date || ''}</div>
+        </div>
+      </div>`;
+    }).join('');
+
+    return `<div class="mb-10">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-8 h-8 bg-sky-50 border border-sky-200 rounded-xl flex items-center justify-center flex-shrink-0">
+          <span class="text-xs font-bold text-sky-700">${groupKey.slice(0, 2)}</span>
+        </div>
+        <div class="min-w-0">
+          <span class="font-bold text-zinc-800 text-sm">${fullName}</span>
+        </div>
+        <span class="mono text-xs bg-sky-50 text-sky-600 border border-sky-200 px-2 py-0.5 rounded-full whitespace-nowrap">${groupItems.length} change${groupItems.length !== 1 ? 's' : ''}</span>
+        <div class="flex-1 h-px bg-zinc-100"></div>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">${cards}</div>
+    </div>`;
+  }).join('');
+}
+
+function openHTMLModal(idx) {
+  const item = (window._htmlFiltered || htmlData)[idx];
+  if (!item) return;
+  document.getElementById('modal-title').textContent = truncate(item.title || 'Change Details', 80);
+  document.getElementById('modal-body').innerHTML = buildHTMLDetail(item);
+  const panel = document.getElementById('modal-panel');
+  const overlay = document.getElementById('modal-overlay');
+  panel.classList.remove('hidden'); overlay.classList.remove('hidden');
+  requestAnimationFrame(() => { panel.classList.add('open'); overlay.classList.add('open'); });
+}
+
+function buildHTMLDetail(item) {
+  const fullName  = ABBR_TO_NAME[item.groupKey] ? item.groupKey + ' — ' + ABBR_TO_NAME[item.groupKey] : item.groupKey;
+  const csvMatch  = urlToCSVRows[normalizeURL(item.url)];
+  const allMatched = csvMatch ? [...csvMatch.approved, ...csvMatch.rejected, ...csvMatch.failed] : [];
+
+  const csvSection = allMatched.length ? `<div class="mb-5">
+    <div class="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">Matched CSV Records <span class="font-normal text-zinc-300">(matched via Web Page URL)</span></div>
+    <div class="flex gap-2 mb-3">
+      ${csvMatch.approved.length ? `<span class="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium">${csvMatch.approved.length} Approved</span>` : ''}
+      ${csvMatch.rejected.length ? `<span class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">${csvMatch.rejected.length} Rejected</span>` : ''}
+      ${csvMatch.failed.length   ? `<span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">${csvMatch.failed.length} Failed</span>` : ''}
+    </div>
+    <div class="space-y-1.5 max-h-56 overflow-y-auto">
+      ${allMatched.slice(0,30).map(row => {
+        const st  = (row['Processing_Status']||'').trim();
+        const isp = (row['Is_Project']||'').trim();
+        const cat = st==='Failed' ? ['bg-red-50 border-red-200','text-red-600','Failed'] :
+                    isp==='True'  ? ['bg-emerald-50 border-emerald-200','text-emerald-600','Approved'] :
+                                    ['bg-amber-50 border-amber-200','text-amber-600','Rejected'];
+        const heading = row['Heading'] || row['Project_Name'] || row['Text'] || '—';
+        const link    = (row['Link'] || row['Web Page'] || '').trim();
+        return `<div class="flex items-start gap-2 p-2.5 rounded-lg border ${cat[0]}">
+          <span class="text-xs font-semibold ${cat[1]} whitespace-nowrap mt-0.5">${cat[2]}</span>
+          <div class="flex-1 min-w-0">
+            <div class="text-xs text-zinc-800 font-medium leading-snug">${truncate(heading,80)}</div>
+            ${link ? `<div class="text-xs text-zinc-400 mono truncate mt-0.5">${truncate(link,55)}</div>` : ''}
+          </div>
+        </div>`;
+      }).join('')}
+      ${allMatched.length > 30 ? `<div class="text-xs text-zinc-300 text-center pt-1">… and ${allMatched.length-30} more</div>` : ''}
+    </div>
+  </div>` : '';
+
+  return `
+  <div class="mb-4 flex flex-wrap gap-2">
+    <span class="inline-flex items-center gap-1 text-xs font-semibold bg-amber-100 text-amber-800 px-2.5 py-1 rounded-full">
+      <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/></svg>
+      Change Detected
+    </span>
+    <span class="text-xs bg-zinc-100 text-zinc-600 px-2.5 py-1 rounded-full">${fullName}</span>
+  </div>
+
+  <div class="grid grid-cols-2 gap-4 mb-5">
+    ${fld('State / Folder', fullName)}
+    ${fld('Last Updated', item.date || '—')}
+    ${fld('Path', item.path || '—')}
+    ${fld('Report File', htmlFileName || '—')}
+  </div>
+
+  ${item.url ? `<a href="${item.url}" target="_blank" class="flex items-center gap-2 text-sm text-white bg-zinc-900 hover:bg-zinc-700 transition-colors px-4 py-2.5 rounded-xl font-medium mb-5">
+    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+    <span class="truncate">${item.url}</span>
+  </a>` : ''}
+
+  ${csvSection}
+
+  ${item.changesFullHTML ? `<div class="mb-5">
+    <div class="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">Changes Detected</div>
+    <div class="changes-viewer bg-zinc-50 border border-zinc-200 rounded-xl p-4 text-sm leading-relaxed max-h-[500px] overflow-y-auto">${item.changesFullHTML}</div>
+  </div>` : item.changeSummary ? `<div class="mb-5">
+    <div class="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">Changes Detected</div>
+    <div class="bg-amber-50 border border-amber-100 rounded-xl p-4 text-sm text-amber-900 leading-relaxed whitespace-pre-wrap">${item.changeSummary}</div>
+  </div>` : ''}`;
+}
+</script>
+</body>
+</html>
