@@ -56,28 +56,61 @@
 </head>
 <body class="bg-white text-zinc-900 min-h-screen">
 
-<!-- Hidden file inputs for fallback -->
-<input type="file" id="csv-input" accept=".csv" class="hidden">
-<input type="file" id="html-input" accept=".html,.htm" class="hidden">
-<div id="drop-zone" class="hidden"></div>
-<div id="upload-progress" class="hidden"><div id="progress-bar"></div><span id="parse-count"></span></div>
+<!-- ── UPLOAD PICKER SCREEN ── -->
+<div id="upload-screen" class="min-h-screen flex flex-col items-center justify-center bg-zinc-50 px-4">
 
-<!-- ── LOADING SCREEN ── -->
-<div id="upload-screen" class="min-h-screen flex flex-col items-center justify-center bg-zinc-50">
-  <div class="w-10 h-10 border-2 border-zinc-200 border-t-zinc-900 rounded-full animate-spin mb-5"></div>
-  <div class="text-zinc-700 text-sm font-semibold mb-1">Loading dashboard…</div>
-  <div class="mono text-xs text-zinc-400 mb-6">Test 7.csv · 16-04-2026.html</div>
-  <!-- Fallback if fetch fails -->
-  <div id="load-error" class="hidden text-center">
-    <p class="text-zinc-400 text-xs mb-4">Auto-load failed. Select files manually:</p>
-    <div class="flex gap-3 justify-center">
-      <label class="cursor-pointer text-xs font-semibold bg-zinc-900 text-white px-4 py-2.5 rounded-xl hover:bg-zinc-700 transition-colors">
-        CSV file <input type="file" id="csv-input-fb" accept=".csv" class="hidden">
-      </label>
-      <label class="cursor-pointer text-xs font-semibold border border-zinc-200 text-zinc-600 px-4 py-2.5 rounded-xl hover:border-zinc-400 transition-colors">
-        HTML report <input type="file" id="html-input-fb" accept=".html,.htm" class="hidden">
-      </label>
+  <!-- Connecting spinner -->
+  <div id="d1-loading" class="text-center">
+    <div class="w-10 h-10 border-2 border-zinc-200 border-t-zinc-900 rounded-full animate-spin mb-5 mx-auto"></div>
+    <div class="text-zinc-700 text-sm font-semibold">Connecting to D1…</div>
+    <div class="mono text-xs text-zinc-400 mt-1">Blackridge Intelligence</div>
+  </div>
+
+  <!-- Loading into dashboard spinner -->
+  <div id="d1-loading-upload" class="hidden text-center">
+    <div class="w-10 h-10 border-2 border-zinc-200 border-t-zinc-900 rounded-full animate-spin mb-5 mx-auto"></div>
+    <div class="text-zinc-700 text-sm font-semibold" id="d1-loading-upload-label">Loading data…</div>
+    <div class="mono text-xs text-zinc-400 mt-1" id="d1-loading-upload-sub">Fetching records from D1</div>
+  </div>
+
+  <!-- Upload picker -->
+  <div id="d1-picker" class="hidden w-full max-w-2xl">
+    <div class="text-center mb-8">
+      <div class="w-10 h-10 bg-zinc-900 rounded-xl flex items-center justify-center mx-auto mb-4">
+        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+        </svg>
+      </div>
+      <div class="font-bold text-zinc-900 text-xl mb-1">US Projects Dashboard</div>
+      <div class="mono text-xs text-zinc-400">Blackridge Intelligence · Cloudflare D1</div>
     </div>
+
+    <div class="bg-white rounded-2xl border border-zinc-200 overflow-hidden">
+      <div class="px-5 py-3.5 border-b border-zinc-100 flex items-center justify-between">
+        <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Available Datasets</span>
+        <button onclick="autoLoadD1()" class="text-xs text-zinc-400 hover:text-zinc-700 transition-colors flex items-center gap-1">
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          Refresh
+        </button>
+      </div>
+      <div id="d1-uploads-list" class="divide-y divide-zinc-50"></div>
+      <div id="d1-no-uploads" class="hidden px-5 py-16 text-center">
+        <svg class="w-8 h-8 text-zinc-200 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/></svg>
+        <p class="text-sm text-zinc-400 font-medium">No datasets in D1 yet</p>
+        <p class="text-xs text-zinc-300 mt-1">Use D1 Transfer to upload a CSV first.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Error state -->
+  <div id="d1-error" class="hidden text-center">
+    <svg class="w-8 h-8 text-red-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+    <p class="text-sm text-red-500 font-medium mb-1">Could not connect to D1</p>
+    <p class="text-xs text-zinc-400 mb-4" id="d1-error-msg"></p>
+    <button onclick="autoLoadD1()" class="text-xs font-semibold bg-zinc-900 text-white px-4 py-2.5 rounded-xl hover:bg-zinc-700 transition-colors">Retry</button>
+  </div>
+
+  <div class="hidden" id="load-error"><!-- legacy compat --></div>
     <p class="text-xs text-zinc-300 mt-3">Or serve this folder with <span class="mono bg-zinc-100 px-1 py-0.5 rounded">python -m http.server</span></p>
   </div>
 </div>
@@ -89,19 +122,29 @@
   <header class="border-b border-zinc-200 bg-white sticky top-0 z-40">
     <div class="max-w-screen-2xl mx-auto px-6 h-13 flex items-center justify-between" style="height:52px">
       <div class="flex items-center gap-3">
-        <div class="w-6 h-6 bg-zinc-900 rounded flex items-center justify-center">
+        <div class="w-6 h-6 bg-zinc-900 rounded flex items-center justify-center flex-shrink-0">
           <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
           </svg>
         </div>
-        <span class="font-semibold text-zinc-900 text-sm">US Projects Dashboard</span>
-        <span class="text-zinc-300">|</span>
-        <span class="mono text-xs text-zinc-400" id="hdr-filename">—</span>
+        <span class="font-semibold text-zinc-900 text-sm hidden sm:block">US Projects Dashboard</span>
+        <span class="text-zinc-300 hidden sm:block">|</span>
+        <!-- Upload date switcher -->
+        <select id="upload-switcher" onchange="switchUpload(this.value)"
+          class="text-xs mono text-zinc-600 border border-zinc-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-zinc-400 cursor-pointer max-w-xs truncate">
+          <option>—</option>
+        </select>
       </div>
-      <button onclick="resetDashboard()" class="text-xs text-zinc-400 hover:text-zinc-800 transition-colors flex items-center gap-1.5">
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-        Load new file
-      </button>
+      <div class="flex items-center gap-2">
+        <button onclick="openManagePanel()" class="text-xs text-zinc-400 hover:text-zinc-800 transition-colors flex items-center gap-1.5 border border-zinc-200 hover:border-zinc-300 rounded-lg px-2.5 py-1.5 bg-white">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+          Manage Data
+        </button>
+        <button onclick="resetDashboard()" class="text-xs text-zinc-400 hover:text-zinc-800 transition-colors flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+          All Datasets
+        </button>
+      </div>
     </div>
   </header>
 
@@ -367,6 +410,24 @@
   </div><!-- /content -->
 </div><!-- /dashboard -->
 
+<!-- ── MANAGE DATA PANEL ── -->
+<div id="manage-overlay" class="modal-overlay fixed inset-0 bg-black/25 backdrop-blur-sm z-50 hidden" onclick="closeManagePanel()"></div>
+<div id="manage-panel" class="modal-panel fixed right-0 top-0 bottom-0 w-full max-w-lg bg-white shadow-2xl z-50 flex flex-col hidden">
+  <div class="sticky top-0 bg-white border-b border-zinc-200 px-6 py-4 flex items-center justify-between">
+    <h2 class="font-semibold text-zinc-900 text-sm">Manage D1 Datasets</h2>
+    <button onclick="closeManagePanel()" class="p-1 rounded-lg hover:bg-zinc-100 transition-colors">
+      <svg class="w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="flex-1 overflow-y-auto px-6 py-5">
+    <p class="text-xs text-zinc-400 mb-4">Delete old uploads to free up D1 storage. This permanently removes all CSV records and HTML changes for that dataset.</p>
+    <div id="manage-list" class="space-y-2"></div>
+    <div id="manage-loading" class="text-center py-8">
+      <div class="w-5 h-5 border-2 border-zinc-200 border-t-zinc-700 rounded-full animate-spin mx-auto"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ── DETAIL PANEL ── -->
 <div id="modal-overlay" class="modal-overlay fixed inset-0 bg-black/25 backdrop-blur-sm z-50 hidden" onclick="closeModal()"></div>
 <div id="modal-panel" class="modal-panel fixed right-0 top-0 bottom-0 w-full max-w-2xl bg-white shadow-2xl z-50 flex flex-col hidden">
@@ -392,33 +453,50 @@ let currentTab = 'htmlmap';
 const PAGE_SIZE = 75;
 let htmlData = [], htmlLoaded = false, htmlFileName = '';
 let urlToCSVRows = {};
+let allUploads = [];   // list from /api/uploads
+let activeUploadId = '';
 
-// ── FILE LOADING ──
-document.getElementById('csv-input').addEventListener('change', e => { if(e.target.files[0]) loadFile(e.target.files[0]); });
-const dropZone = document.getElementById('drop-zone');
-dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
-dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag-over'); if(e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); });
+// ── D1 COLUMN MAPPING ──
+const D1_TO_CSV = {
+  processing_status:'Processing_Status', is_project:'Is_Project',
+  project_name:'Project_Name', agency:'Agency', state:'State',
+  region:'Region', city:'City', location:'Location',
+  bid_deadline:'Bid_Deadline', bid_value:'Bid_Value',
+  confidence:'Confidence', project_type:'Project_Type',
+  heading:'Heading', summary:'Summary', scope:'Scope',
+  validation_notes:'Validation_Notes', web_page:'Web Page',
+  link:'Link', extraction_status:'Extraction_Status',
+  content_quality:'Content_Quality', has_plans_specs:'Has_Plans_Specs',
+  has_bidding_docs:'Has_Bidding_Docs', has_phl:'Has_PHL',
+  has_pbsi:'Has_PBSI', processing_date:'Processing_Date',
+  method_used:'Method_Used', used_llm:'Used_LLM', trade:'Trade',
+};
 
-function loadFile(file) {
-  allData = [];
-  document.getElementById('upload-progress').classList.remove('hidden');
-  document.getElementById('hdr-filename').textContent = file.name;
+function d1RowToCSV(rec) {
+  const row = {};
+  for (const [d1col, csvcol] of Object.entries(D1_TO_CSV)) {
+    row[csvcol] = rec[d1col] ?? '';
+  }
+  return row;
+}
 
-  Papa.parse(file, {
-    header: true,
-    skipEmptyLines: true,
-    chunk(results) {
-      allData = allData.concat(results.data);
-      document.getElementById('parse-count').textContent = allData.length.toLocaleString() + ' rows';
-      document.getElementById('progress-bar').style.width = '65%';
-    },
-    complete() {
-      document.getElementById('progress-bar').style.width = '100%';
-      setTimeout(processData, 150);
-    },
-    error(err) { alert('Error: ' + err.message); }
-  });
+function d1HtmlToItem(rec) {
+  const raw = rec.changes_full_html || '';
+  return {
+    title:           rec.title || '',
+    date:            rec.date  || '',
+    url:             rec.url   || '',
+    changeSummary:   rec.change_summary || '',
+    changesFullHTML: raw,
+    changesFullText: raw.replace(/<[^>]*>/g, ''),
+    path:            rec.path      || '',
+    groupKey:        rec.group_key || '',
+  };
+}
+
+function fmtUploadLabel(u) {
+  const dt = u.created_at ? new Date(u.created_at).toLocaleString('en-GB', { dateStyle:'medium', timeStyle:'short' }) : '—';
+  return `${dt} · ${(u.csv_rows||0).toLocaleString()} rows · ${(u.html_items||0).toLocaleString()} HTML`;
 }
 
 function processData() {
@@ -919,7 +997,7 @@ function resetDashboard() {
   sortState={approved:{col:'',dir:'asc'},rejected:{col:'',dir:'asc'},failed:{col:'',dir:'asc'}};
   stateData={}; mapMode='total'; mapRendered=false;
   htmlData=[]; htmlLoaded=false; htmlFileName='';
-  urlToCSVRows={};
+  urlToCSVRows={}; activeUploadId='';
   currentTab='htmlmap';
   ['state-filter','region-filter','type-filter'].forEach(id => {
     const el=document.getElementById(id); if(el){while(el.options.length>1) el.remove(1); el.value='';}
@@ -931,8 +1009,12 @@ function resetDashboard() {
   const hf=document.getElementById('html-folder-filter'); if(hf){while(hf.options.length>1) hf.remove(1);}
   document.getElementById('dashboard').classList.add('hidden');
   document.getElementById('upload-screen').classList.remove('hidden');
-  document.getElementById('load-error').classList.add('hidden');
-  autoLoadFiles();
+  // reset picker
+  document.getElementById('d1-picker').classList.add('hidden');
+  document.getElementById('d1-loading').classList.remove('hidden');
+  document.getElementById('d1-error').classList.add('hidden');
+  document.getElementById('d1-loading-upload').classList.add('hidden');
+  autoLoadD1();
 }
 
 // ── KEYBOARD ──
@@ -1383,40 +1465,215 @@ function showHTMLItemDetail(idx) {
   document.getElementById('modal-body').scrollTop = 0;
 }
 
-// ── AUTO LOAD ──
-async function autoLoadFiles() {
+// ── D1 LOAD ──
+async function autoLoadD1() {
+  document.getElementById('d1-loading').classList.remove('hidden');
+  document.getElementById('d1-picker').classList.add('hidden');
+  document.getElementById('d1-error').classList.add('hidden');
   try {
-    const [csvRes, htmlRes] = await Promise.all([
-      fetch('./Test%207.csv'),
-      fetch('./16-04-2026.html')
-    ]);
-    if (!csvRes.ok || !htmlRes.ok) throw new Error('fetch failed');
+    const resp = await fetch('/api/uploads?limit=50');
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    allUploads = data.uploads || [];
 
-    const [csvText, htmlText] = await Promise.all([csvRes.text(), htmlRes.text()]);
+    document.getElementById('d1-loading').classList.add('hidden');
 
-    htmlData     = parseHTMLReport(htmlText);
-    htmlFileName = '16-04-2026.html';
-    htmlLoaded   = true;
+    if (!allUploads.length) {
+      document.getElementById('d1-no-uploads').classList.remove('hidden');
+      document.getElementById('d1-picker').classList.remove('hidden');
+      return;
+    }
 
-    Papa.parse(csvText, {
-      header: true,
-      skipEmptyLines: true,
-      complete(res) {
-        allData = res.data;
-        document.getElementById('hdr-filename').textContent = 'Test 7.csv + 16-04-2026.html';
-        processData();
-      }
-    });
+    document.getElementById('d1-no-uploads').classList.add('hidden');
+    renderUploadsPicker(allUploads);
+    populateUploadSwitcher(allUploads);
+    document.getElementById('d1-picker').classList.remove('hidden');
+
+    // Auto-load the most recent upload
+    loadUploadFromD1(allUploads[0].id, allUploads[0]);
   } catch(e) {
-    document.getElementById('load-error').classList.remove('hidden');
-    // Fallback: wire up manual file inputs
-    const csvFb  = document.getElementById('csv-input-fb');
-    const htmlFb = document.getElementById('html-input-fb');
-    if (csvFb)  csvFb.addEventListener('change',  ev => { if(ev.target.files[0]) loadFile(ev.target.files[0]); });
-    if (htmlFb) htmlFb.addEventListener('change', ev => { if(ev.target.files[0]) loadHTMLFile(ev.target.files[0]); });
+    document.getElementById('d1-loading').classList.add('hidden');
+    document.getElementById('d1-error-msg').textContent = e.message;
+    document.getElementById('d1-error').classList.remove('hidden');
   }
 }
-document.addEventListener('DOMContentLoaded', autoLoadFiles);
+
+function renderUploadsPicker(uploads) {
+  const list = document.getElementById('d1-uploads-list');
+  list.innerHTML = uploads.map(u => {
+    const dt  = u.created_at ? new Date(u.created_at).toLocaleString('en-GB', { dateStyle:'medium', timeStyle:'short' }) : '—';
+    const file = u.csv_file || '—';
+    return `<div class="flex items-center gap-4 px-5 py-4 hover:bg-zinc-50 transition-colors">
+      <div class="flex-1 min-w-0">
+        <div class="text-sm font-medium text-zinc-800 mono truncate">${file}</div>
+        <div class="text-xs text-zinc-400 mt-0.5">${dt} &nbsp;·&nbsp; <span class="text-emerald-600">${(u.csv_rows||0).toLocaleString()} CSV rows</span>${u.html_items ? ` &nbsp;·&nbsp; <span class="text-sky-600">${u.html_items.toLocaleString()} HTML changes</span>` : ''}</div>
+      </div>
+      <button onclick="loadUploadFromD1('${u.id}', ${JSON.stringify(u).replace(/'/g,"&#39;")})"
+        class="flex-shrink-0 text-xs font-semibold bg-zinc-900 text-white px-3.5 py-2 rounded-xl hover:bg-zinc-700 transition-colors">
+        Load
+      </button>
+    </div>`;
+  }).join('');
+}
+
+function populateUploadSwitcher(uploads) {
+  const sel = document.getElementById('upload-switcher');
+  sel.innerHTML = uploads.map(u => {
+    const dt  = u.created_at ? new Date(u.created_at).toLocaleString('en-GB', { dateStyle:'short', timeStyle:'short' }) : '—';
+    const file = u.csv_file ? u.csv_file.replace(/\.csv$/i,'') : u.id.slice(0,8);
+    return `<option value="${u.id}">${file} — ${dt}</option>`;
+  }).join('');
+}
+
+async function loadUploadFromD1(uploadId, uploadMeta) {
+  activeUploadId = uploadId;
+
+  // show loading overlay on picker
+  document.getElementById('d1-loading-upload').classList.remove('hidden');
+  document.getElementById('d1-picker').classList.add('hidden');
+  document.getElementById('d1-loading').classList.add('hidden');
+
+  const meta = typeof uploadMeta === 'string' ? JSON.parse(uploadMeta) : uploadMeta;
+  const label = meta?.csv_file || uploadId.slice(0,8);
+  document.getElementById('d1-loading-upload-label').textContent = `Loading ${label}…`;
+
+  try {
+    // fetch all CSV records (paginated)
+    const allRecs = [];
+    let page = 1;
+    while (true) {
+      document.getElementById('d1-loading-upload-sub').textContent = `Fetching CSV records… page ${page}`;
+      const r = await fetch(`/api/records?upload_id=${uploadId}&limit=1000&page=${page}`);
+      const d = await r.json();
+      allRecs.push(...(d.records || []));
+      if (!d.records?.length || page >= (d.pages || 1)) break;
+      page++;
+    }
+
+    // fetch all HTML changes (paginated)
+    const allChgs = [];
+    page = 1;
+    while (true) {
+      document.getElementById('d1-loading-upload-sub').textContent = `Fetching HTML changes… page ${page}`;
+      const r = await fetch(`/api/html-changes?upload_id=${uploadId}&limit=1000&page=${page}`);
+      const d = await r.json();
+      allChgs.push(...(d.changes || []));
+      if (!d.changes?.length || page >= (d.pages || 1)) break;
+      page++;
+    }
+
+    allData  = allRecs.map(d1RowToCSV);
+    htmlData = allChgs.map(d1HtmlToItem);
+    htmlLoaded   = htmlData.length > 0;
+    htmlFileName = meta?.html_file || '';
+
+    // sync switcher to this upload
+    const switcher = document.getElementById('upload-switcher');
+    if (switcher) switcher.value = uploadId;
+
+    const dt = meta?.created_at ? new Date(meta.created_at).toLocaleString('en-GB', { dateStyle:'medium', timeStyle:'short' }) : '';
+    document.getElementById('hdr-filename').textContent = `${label}${dt ? ' · '+dt : ''}`;
+    processData();
+
+    document.getElementById('d1-loading-upload').classList.add('hidden');
+    document.getElementById('upload-screen').classList.add('hidden');
+    document.getElementById('dashboard').classList.remove('hidden');
+  } catch(e) {
+    document.getElementById('d1-loading-upload').classList.add('hidden');
+    document.getElementById('d1-error-msg').textContent = 'Failed to load dataset: ' + e.message;
+    document.getElementById('d1-error').classList.remove('hidden');
+    document.getElementById('upload-screen').classList.remove('hidden');
+  }
+}
+
+async function switchUpload(uploadId) {
+  if (!uploadId || uploadId === activeUploadId) return;
+  const meta = allUploads.find(u => u.id === uploadId) || { id: uploadId };
+  document.getElementById('upload-screen').classList.remove('hidden');
+  document.getElementById('dashboard').classList.add('hidden');
+  // reset data state
+  allData=[]; approved=[]; rejected=[]; failed=[];
+  filtered={approved:[],rejected:[],failed:[]};
+  pages={approved:1,rejected:1,failed:1};
+  stateData={}; mapMode='total'; mapRendered=false;
+  htmlData=[]; htmlLoaded=false;
+  urlToCSVRows={};
+  ['state-filter','region-filter','type-filter'].forEach(id => {
+    const el=document.getElementById(id); if(el){while(el.options.length>1) el.remove(1); el.value='';}
+  });
+  loadUploadFromD1(uploadId, meta);
+}
+
+// ── MANAGE PANEL ──
+function openManagePanel() {
+  const overlay = document.getElementById('manage-overlay');
+  const panel   = document.getElementById('manage-panel');
+  overlay.classList.remove('hidden'); panel.classList.remove('hidden');
+  requestAnimationFrame(() => { panel.classList.add('open'); overlay.classList.add('open'); });
+  loadManageList();
+}
+
+function closeManagePanel() {
+  const overlay = document.getElementById('manage-overlay');
+  const panel   = document.getElementById('manage-panel');
+  panel.classList.remove('open'); overlay.classList.remove('open');
+  setTimeout(() => { panel.classList.add('hidden'); overlay.classList.add('hidden'); }, 250);
+}
+
+async function loadManageList() {
+  const list = document.getElementById('manage-list');
+  const loadingEl = document.getElementById('manage-loading');
+  list.innerHTML = ''; loadingEl.classList.remove('hidden');
+  try {
+    const resp = await fetch('/api/uploads?limit=50');
+    const data = await resp.json();
+    const uploads = data.uploads || [];
+    loadingEl.classList.add('hidden');
+    if (!uploads.length) {
+      list.innerHTML = '<p class="text-xs text-zinc-300 text-center py-8">No datasets found in D1.</p>';
+      return;
+    }
+    list.innerHTML = uploads.map(u => {
+      const dt  = u.created_at ? new Date(u.created_at).toLocaleString('en-GB', { dateStyle:'medium', timeStyle:'short' }) : '—';
+      const isActive = u.id === activeUploadId;
+      return `<div class="flex items-center gap-3 bg-white border border-zinc-100 rounded-xl px-4 py-3 ${isActive ? 'ring-2 ring-emerald-200' : ''}">
+        <div class="flex-1 min-w-0">
+          ${isActive ? '<span class="text-xs bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full font-medium mr-1.5">Active</span>' : ''}
+          <span class="text-xs font-medium text-zinc-700 mono">${u.csv_file || u.id.slice(0,8)}</span>
+          <div class="text-xs text-zinc-400 mt-0.5">${dt} &nbsp;·&nbsp; ${(u.csv_rows||0).toLocaleString()} rows &nbsp;·&nbsp; ${(u.html_items||0).toLocaleString()} HTML</div>
+        </div>
+        <button onclick="deleteUpload('${u.id}', this)" ${isActive ? 'disabled title="Cannot delete active dataset"' : ''}
+          class="flex-shrink-0 text-xs text-red-500 hover:text-red-700 border border-red-200 hover:border-red-300 rounded-lg px-2.5 py-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed bg-white">
+          Delete
+        </button>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    loadingEl.classList.add('hidden');
+    list.innerHTML = `<p class="text-xs text-red-400 text-center py-4">Failed: ${e.message}</p>`;
+  }
+}
+
+async function deleteUpload(uploadId, btn) {
+  if (!confirm('Permanently delete this dataset from D1? This cannot be undone.')) return;
+  btn.disabled = true;
+  btn.textContent = 'Deleting…';
+  try {
+    const resp = await fetch(`/api/uploads/${uploadId}`, { method: 'DELETE' });
+    const data = await resp.json();
+    if (!data.ok) throw new Error(data.error || 'Delete failed');
+    // refresh manage list and uploads
+    allUploads = allUploads.filter(u => u.id !== uploadId);
+    populateUploadSwitcher(allUploads);
+    loadManageList();
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = 'Delete';
+    alert('Delete failed: ' + e.message);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', autoLoadD1);
 
 // ── HTML CHANGES ──
 

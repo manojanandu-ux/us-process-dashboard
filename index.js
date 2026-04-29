@@ -11,7 +11,7 @@
 
 const CORS = {
   "Access-Control-Allow-Origin":  "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
   "Content-Type":                 "application/json",
 };
@@ -51,10 +51,23 @@ export default {
       return json({ uploads: results });
     }
 
+    // ── DELETE /api/uploads/:id ───────────────────────────────────────────────
+    if (request.method === "DELETE") {
+      const m = pathname.match(/^\/api\/uploads\/([^/]+)$/);
+      if (!m) return err("Not found", 404);
+      const uploadId = m[1];
+      await Promise.all([
+        env.DB.prepare("DELETE FROM csv_records WHERE upload_id = ?").bind(uploadId).run(),
+        env.DB.prepare("DELETE FROM html_changes WHERE upload_id = ?").bind(uploadId).run(),
+      ]);
+      await env.DB.prepare("DELETE FROM uploads WHERE id = ?").bind(uploadId).run();
+      return json({ ok: true, deleted_id: uploadId });
+    }
+
     // ── /api/records ──────────────────────────────────────────────────────────
     if (pathname === "/api/records") {
       const page  = Math.max(1, parseInt(p.page)  || 1);
-      const limit = Math.min(parseInt(p.limit) || 50, 200);
+      const limit = Math.min(parseInt(p.limit) || 50, 1000);
       const offset = (page - 1) * limit;
 
       // resolve upload_id: explicit or latest
@@ -103,7 +116,7 @@ export default {
     // ── /api/html-changes ─────────────────────────────────────────────────────
     if (pathname === "/api/html-changes") {
       const page  = Math.max(1, parseInt(p.page)  || 1);
-      const limit = Math.min(parseInt(p.limit) || 50, 200);
+      const limit = Math.min(parseInt(p.limit) || 50, 1000);
       const offset = (page - 1) * limit;
 
       let uploadId = p.upload_id;
