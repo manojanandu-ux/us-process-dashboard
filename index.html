@@ -927,7 +927,7 @@ function buildApprovedDetail(row) {
   const conf = parseFloat(row['Confidence'])||0;
   const pct = (conf*100).toFixed(0);
   const colCls = conf>=0.8?'bg-emerald-500':conf>=0.5?'bg-amber-400':'bg-red-400';
-  const url = (row['Web Page']||'').trim();
+  const url = (row['Link']||row['Web Page']||'').trim();
 
   return `
   <div class="mb-4 flex flex-wrap gap-2">
@@ -997,7 +997,7 @@ function buildRejectedDetail(row) {
   const conf = parseFloat(row['Confidence'])||0;
   const pct = (conf*100).toFixed(0);
   const colCls = conf>=0.8?'bg-emerald-500':conf>=0.5?'bg-amber-400':'bg-red-400';
-  const url = (row['Web Page']||'').trim();
+  const url = (row['Link']||row['Web Page']||'').trim();
 
   return `
   <div class="mb-4">
@@ -1048,7 +1048,7 @@ function buildRejectedDetail(row) {
 }
 
 function buildFailedDetail(row) {
-  const url = (row['Web Page']||'').trim();
+  const url = (row['Link']||row['Web Page']||'').trim();
   return `
   <div class="mb-4">
     <span class="inline-flex items-center gap-1 text-xs font-semibold bg-red-100 text-red-700 px-2.5 py-1 rounded-full">
@@ -1685,10 +1685,29 @@ async function loadUploadFromD1(uploadId, uploadMeta) {
       page++;
     }
 
-    allData  = allRecs.map(d1RowToCSV);
-    htmlData = allChgs.map(d1HtmlToItem);
-    htmlLoaded   = htmlData.length > 0;
-    htmlFileName = meta?.html_file || '';
+    allData = allRecs.map(d1RowToCSV);
+
+    // If this upload has an HTML file in R2, fetch and parse it
+    const r2Key = meta?.html_file || '';
+    if (r2Key) {
+      try {
+        document.getElementById('d1-loading-upload-sub').textContent = 'Loading HTML report from R2…';
+        const r2Resp = await fetch('/api/html-files/' + r2Key.split('/').map(encodeURIComponent).join('/'));
+        if (r2Resp.ok) {
+          const rawHTML = await r2Resp.text();
+          htmlData    = parseHTMLReport(rawHTML);
+          htmlLoaded  = htmlData.length > 0;
+          htmlFileName = r2Key.split('/').pop().replace(/^\d+-/, '');
+        }
+      } catch(e) {
+        console.warn('Failed to load HTML from R2:', e);
+      }
+    } else {
+      // Fallback: use html_changes from D1 if any were stored there
+      htmlData    = allChgs.map(d1HtmlToItem);
+      htmlLoaded  = htmlData.length > 0;
+      htmlFileName = '';
+    }
 
     // sync switcher to this upload
     const switcher = document.getElementById('upload-switcher');
@@ -1817,11 +1836,7 @@ function loadHTMLFile(file) {
   const reader = new FileReader();
   reader.onload = async evt => {
     loadHTMLText(evt.target.result, file.name);
-    const parsedItems = [...htmlData]; // capture after synchronous parse
-    await Promise.all([
-      _uploadHTMLToR2(file),
-      _importHTMLToD1(parsedItems, activeUploadId),
-    ]);
+    await _uploadHTMLToR2(file);
   };
   reader.readAsText(file, 'UTF-8');
 }
@@ -1843,23 +1858,6 @@ async function _uploadHTMLToR2(file) {
   }
 }
 
-async function _importHTMLToD1(items, uploadId) {
-  if (!uploadId || !items.length) return;
-  try {
-    const resp = await fetch('/api/html-changes/import', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ upload_id: uploadId, items }),
-    });
-    const d = await resp.json();
-    if (d.ok) {
-      const u = allUploads.find(x => x.id === uploadId);
-      if (u) u.html_items = d.inserted;
-    }
-  } catch(e) {
-    console.warn('D1 HTML import failed:', e);
-  }
-}
 
 function loadHTMLText(rawHTML, name) {
   htmlFileName = name;

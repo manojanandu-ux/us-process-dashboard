@@ -234,34 +234,36 @@ export default {
       const items    = body.items || [];
       if (!uploadId) return err("upload_id required");
 
-      // Wipe existing html_changes for this upload then re-insert
-      await env.DB.prepare("DELETE FROM html_changes WHERE upload_id = ?").bind(uploadId).run();
+      const cols  = ["upload_id","title","date","url","change_summary","changes_full_html","path","group_key"];
+      const phRow = "(" + cols.map(() => "?").join(",") + ")";
+      const CHUNK = 10; // 10 rows × 8 cols = 80 params — under D1 limit
 
-      if (items.length) {
-        const cols  = ["upload_id","title","date","url","change_summary","changes_full_html","path","group_key"];
-        const phRow = "(" + cols.map(() => "?").join(",") + ")";
-        const CHUNK = 10; // 10 rows × 8 cols = 80 params — under D1 limit
+      // Build all statements upfront, then execute in one batch round-trip
+      const statements = [
+        env.DB.prepare("DELETE FROM html_changes WHERE upload_id = ?").bind(uploadId),
+      ];
 
-        for (let i = 0; i < items.length; i += CHUNK) {
-          const chunk  = items.slice(i, i + CHUNK);
-          const sql    = `INSERT INTO html_changes (${cols.join(",")}) VALUES ${chunk.map(() => phRow).join(",")}`;
-          const params = chunk.flatMap(it => [
-            uploadId,
-            (it.title            || "").slice(0, 500),
-            (it.date             || "").slice(0, 100),
-            (it.url              || "").slice(0, 500),
-            (it.changeSummary    || "").slice(0, 1000),
-            (it.changesFullHTML  || "").slice(0, 8000),
-            (it.path             || "").slice(0, 500),
-            (it.groupKey         || "").slice(0, 100),
-          ]);
-          await env.DB.prepare(sql).bind(...params).run();
-        }
+      for (let i = 0; i < items.length; i += CHUNK) {
+        const chunk  = items.slice(i, i + CHUNK);
+        const sql    = `INSERT INTO html_changes (${cols.join(",")}) VALUES ${chunk.map(() => phRow).join(",")}`;
+        const params = chunk.flatMap(it => [
+          uploadId,
+          (it.title           || "").slice(0, 500),
+          (it.date            || "").slice(0, 100),
+          (it.url             || "").slice(0, 500),
+          (it.changeSummary   || "").slice(0, 1000),
+          (it.changesFullHTML || "").slice(0, 4000),
+          (it.path            || "").slice(0, 500),
+          (it.groupKey        || "").slice(0, 100),
+        ]);
+        statements.push(env.DB.prepare(sql).bind(...params));
       }
 
-      await env.DB.prepare("UPDATE uploads SET html_items = ? WHERE id = ?")
-        .bind(items.length, uploadId).run();
+      statements.push(
+        env.DB.prepare("UPDATE uploads SET html_items = ? WHERE id = ?").bind(items.length, uploadId)
+      );
 
+      await env.DB.batch(statements);
       return json({ ok: true, inserted: items.length });
     }
 
