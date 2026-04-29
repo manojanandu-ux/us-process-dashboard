@@ -110,9 +110,7 @@
     <button onclick="autoLoadD1()" class="text-xs font-semibold bg-zinc-900 text-white px-4 py-2.5 rounded-xl hover:bg-zinc-700 transition-colors">Retry</button>
   </div>
 
-  <div class="hidden" id="load-error"><!-- legacy compat --></div>
-    <p class="text-xs text-zinc-300 mt-3">Or serve this folder with <span class="mono bg-zinc-100 px-1 py-0.5 rounded">python -m http.server</span></p>
-  </div>
+  <div class="hidden" id="load-error"></div>
 </div>
 
 <!-- ── DASHBOARD ── -->
@@ -1571,18 +1569,14 @@ async function loadUploadFromD1(uploadId, uploadMeta) {
     const switcher = document.getElementById('upload-switcher');
     if (switcher) switcher.value = uploadId;
 
-    const dt = meta?.created_at ? new Date(meta.created_at).toLocaleString('en-GB', { dateStyle:'medium', timeStyle:'short' }) : '';
-    document.getElementById('hdr-filename').textContent = `${label}${dt ? ' · '+dt : ''}`;
     processData();
-
     document.getElementById('d1-loading-upload').classList.add('hidden');
-    document.getElementById('upload-screen').classList.add('hidden');
-    document.getElementById('dashboard').classList.remove('hidden');
   } catch(e) {
     document.getElementById('d1-loading-upload').classList.add('hidden');
-    document.getElementById('d1-error-msg').textContent = 'Failed to load dataset: ' + e.message;
     document.getElementById('d1-error').classList.remove('hidden');
     document.getElementById('upload-screen').classList.remove('hidden');
+    const msgEl = document.getElementById('d1-error-msg');
+    if (msgEl) msgEl.textContent = 'Failed to load dataset: ' + e.message;
   }
 }
 
