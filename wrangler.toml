@@ -10,3 +10,7 @@ not_found_handling = "single-page-application"
 binding     = "DB"
 database_name = "us-process-data"
 database_id   = "644fbd07-2da0-4e58-a7d7-69a928df8f9d"
+
+[[r2_buckets]]
+binding     = "HTML_BUCKET"
+bucket_name = "us-process-html-reports"

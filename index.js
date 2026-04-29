@@ -11,7 +11,7 @@
 
 const CORS = {
   "Access-Control-Allow-Origin":  "*",
-  "Access-Control-Allow-Methods": "GET, DELETE, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
   "Content-Type":                 "application/json",
 };
@@ -200,6 +200,57 @@ export default {
         by_trade: tradeRows.results,
         by_is_project: isProjectRows.results,
       });
+    }
+
+    // ── /api/html-upload (POST) ────────────────────────────────────────────────
+    if (pathname === "/api/html-upload" && request.method === "POST") {
+      const form = await request.formData();
+      const file = form.get("file");
+      if (!file) return err("No file provided");
+      const now      = new Date();
+      const dateStr  = now.toISOString().slice(0, 10);
+      const filename = file.name || "report.html";
+      const key      = `${dateStr}/${now.getTime()}-${filename}`;
+      await env.HTML_BUCKET.put(key, file.stream(), {
+        httpMetadata:   { contentType: "text/html; charset=utf-8" },
+        customMetadata: { originalName: filename, uploadedAt: now.toISOString(), size: String(file.size) },
+      });
+      return json({ ok: true, key, name: filename, date: dateStr, size: file.size });
+    }
+
+    // ── /api/html-files (GET list) ────────────────────────────────────────────
+    if (pathname === "/api/html-files" && request.method === "GET") {
+      const listed = await env.HTML_BUCKET.list({ limit: 500 });
+      const files = listed.objects.map(o => ({
+        key:      o.key,
+        size:     o.customMetadata?.size ? parseInt(o.customMetadata.size) : o.size,
+        uploaded: o.uploaded,
+        name:     o.customMetadata?.originalName || o.key.split("/").pop(),
+        date:     o.key.split("/")[0] || "",
+      }));
+      files.sort((a, b) => new Date(b.uploaded) - new Date(a.uploaded));
+      return json({ files });
+    }
+
+    // ── /api/html-files/:key (GET raw HTML, DELETE) ───────────────────────────
+    if (pathname.startsWith("/api/html-files/")) {
+      const key = decodeURIComponent(pathname.slice("/api/html-files/".length));
+      if (request.method === "GET") {
+        const obj = await env.HTML_BUCKET.get(key);
+        if (!obj) return err("Not found", 404);
+        return new Response(obj.body, {
+          headers: {
+            "Content-Type":                "text/html; charset=utf-8",
+            "Access-Control-Allow-Origin": "*",
+            "Cache-Control":               "no-cache",
+          },
+        });
+      }
+      if (request.method === "DELETE") {
+        await env.HTML_BUCKET.delete(key);
+        return json({ ok: true, deleted_key: key });
+      }
+      return err("Method not allowed", 405);
     }
 
     return err("Not found", 404);

@@ -307,6 +307,11 @@
             <span id="html-upload-btn-label">Upload HTML Report</span>
             <input type="file" id="html-file-input" accept=".html,.htm" class="hidden" onchange="handleHTMLFileInput(this)">
           </label>
+          <!-- Load from R2 button -->
+          <button onclick="openR2Picker()" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 border border-zinc-200 text-zinc-500 hover:border-sky-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-all bg-white">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"/></svg>
+            Load from R2
+          </button>
           <div class="relative flex-1 min-w-52 max-w-sm">
             <svg class="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
@@ -429,6 +434,25 @@
     <p class="text-xs text-zinc-400 mb-4">Delete old uploads to free up D1 storage. This permanently removes all CSV records and HTML changes for that dataset.</p>
     <div id="manage-list" class="space-y-2"></div>
     <div id="manage-loading" class="text-center py-8">
+      <div class="w-5 h-5 border-2 border-zinc-200 border-t-zinc-700 rounded-full animate-spin mx-auto"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── R2 PICKER PANEL ── -->
+<div id="r2-overlay" class="modal-overlay fixed inset-0 bg-black/25 backdrop-blur-sm z-50 hidden" onclick="closeR2Picker()"></div>
+<div id="r2-panel" class="modal-panel fixed right-0 top-0 bottom-0 w-full max-w-lg bg-white shadow-2xl z-50 flex flex-col hidden">
+  <div class="sticky top-0 bg-white border-b border-zinc-200 px-6 py-4 flex items-center justify-between">
+    <div>
+      <h2 class="font-semibold text-zinc-900 text-sm">HTML Reports — R2 Storage</h2>
+      <p class="text-xs text-zinc-400 mt-0.5">Pick a file to load into the dashboard</p>
+    </div>
+    <button onclick="closeR2Picker()" class="p-1 rounded-lg hover:bg-zinc-100 transition-colors">
+      <svg class="w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div id="r2-list" class="flex-1 overflow-y-auto px-6 py-5">
+    <div class="text-center py-12">
       <div class="w-5 h-5 border-2 border-zinc-200 border-t-zinc-700 rounded-full animate-spin mx-auto"></div>
     </div>
   </div>
@@ -1774,42 +1798,131 @@ document.addEventListener('DOMContentLoaded', autoLoadD1);
 
 function handleHTMLFileInput(input) {
   if (input.files[0]) loadHTMLFile(input.files[0]);
-  input.value = '';  // reset so same file can be re-selected
+  input.value = '';
 }
 
 function loadHTMLFile(file) {
-  htmlFileName = file.name;
+  const reader = new FileReader();
+  reader.onload = evt => loadHTMLText(evt.target.result, file.name);
+  reader.readAsText(file, 'UTF-8');
+}
 
-  // Update button label to show parsing in progress
+function loadHTMLText(rawHTML, name) {
+  htmlFileName = name;
   const btnLabel = document.getElementById('html-upload-btn-label');
   if (btnLabel) btnLabel.textContent = 'Parsing…';
 
-  const reader = new FileReader();
-  reader.onload = evt => {
-    htmlData = parseHTMLReport(evt.target.result);
-    htmlLoaded = true;
+  htmlData   = parseHTMLReport(rawHTML);
+  htmlLoaded = true;
 
-    const folders = [...new Set(htmlData.map(d => d.groupKey))].sort();
-    const sel = document.getElementById('html-folder-filter');
-    while (sel.options.length > 1) sel.remove(1);
-    folders.forEach(f => { const o = document.createElement('option'); o.value = o.textContent = f; sel.appendChild(o); });
+  const folders = [...new Set(htmlData.map(d => d.groupKey))].sort();
+  const sel = document.getElementById('html-folder-filter');
+  while (sel.options.length > 1) sel.remove(1);
+  folders.forEach(f => { const o = document.createElement('option'); o.value = o.textContent = f; sel.appendChild(o); });
 
-    document.getElementById('tc-html').textContent = htmlData.length.toLocaleString();
+  document.getElementById('tc-html').textContent = htmlData.length.toLocaleString();
 
-    // Update button and source label
-    if (btnLabel) btnLabel.textContent = 'Replace HTML Report';
-    const srcLabel = document.getElementById('html-source-label');
-    if (srcLabel) srcLabel.textContent = file.name;
+  if (btnLabel) btnLabel.textContent = 'Replace HTML Report';
+  const srcLabel = document.getElementById('html-source-label');
+  if (srcLabel) srcLabel.textContent = name;
 
-    renderHTMLChanges();
-    updateHTMLChangesStat();
-    buildURLIndex();
-    updateHTMLClassStats();
-    aggregateByState();
-    if (mapRendered) { renderMap(); renderMapStateTable(); }
-  };
-  reader.readAsText(file, 'UTF-8');
+  renderHTMLChanges();
+  updateHTMLChangesStat();
+  buildURLIndex();
+  updateHTMLClassStats();
+  aggregateByState();
+  if (mapRendered) { renderMap(); renderMapStateTable(); }
 }
+
+// ── R2 PICKER ──
+function openR2Picker() {
+  const overlay = document.getElementById('r2-overlay');
+  const panel   = document.getElementById('r2-panel');
+  overlay.classList.remove('hidden'); panel.classList.remove('hidden');
+  requestAnimationFrame(() => { panel.classList.add('open'); overlay.classList.add('open'); });
+  loadR2List();
+}
+
+function closeR2Picker() {
+  const overlay = document.getElementById('r2-overlay');
+  const panel   = document.getElementById('r2-panel');
+  panel.classList.remove('open'); overlay.classList.remove('open');
+  setTimeout(() => { panel.classList.add('hidden'); overlay.classList.add('hidden'); }, 250);
+}
+
+async function loadR2List() {
+  const listEl = document.getElementById('r2-list');
+  listEl.innerHTML = '<div class="text-center py-12"><div class="w-5 h-5 border-2 border-zinc-200 border-t-zinc-700 rounded-full animate-spin mx-auto"></div></div>';
+  try {
+    const d = await (await fetch('/api/html-files')).json();
+    const files = d.files || [];
+    if (!files.length) {
+      listEl.innerHTML = '<p class="text-sm text-zinc-400 text-center py-12">No HTML reports stored in R2 yet.</p>';
+      return;
+    }
+    // Group by date
+    const byDate = {};
+    files.forEach(f => { (byDate[f.date] = byDate[f.date] || []).push(f); });
+    const dates = Object.keys(byDate).sort().reverse();
+    listEl.innerHTML = dates.map(date => `
+      <div class="mb-6">
+        <div class="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">${date}</div>
+        <div class="space-y-2">
+          ${byDate[date].map(f => `
+            <div class="flex items-center gap-2 p-3 rounded-xl border border-zinc-200 bg-zinc-50 hover:bg-white hover:border-zinc-300 transition-all" id="r2-row-${CSS.escape(f.key)}">
+              <div class="flex-1 min-w-0">
+                <div class="text-sm font-medium text-zinc-800 truncate">${escHtml(f.name)}</div>
+                <div class="text-xs text-zinc-400 mono mt-0.5">${f.size ? (f.size/1024).toFixed(0) + ' KB' : ''} · ${new Date(f.uploaded).toLocaleString()}</div>
+              </div>
+              <button onclick="loadFromR2('${escAttr(f.key)}', '${escAttr(f.name)}')"
+                class="flex-shrink-0 px-3 py-1.5 text-xs font-semibold bg-zinc-900 text-white rounded-lg hover:bg-zinc-700 transition-colors">
+                Load
+              </button>
+              <button onclick="deleteR2File('${escAttr(f.key)}', this)"
+                class="flex-shrink-0 px-3 py-1.5 text-xs font-medium border border-red-200 text-red-500 rounded-lg hover:bg-red-50 transition-colors">
+                Delete
+              </button>
+            </div>`).join('')}
+        </div>
+      </div>`).join('');
+  } catch(e) {
+    listEl.innerHTML = `<p class="text-sm text-red-400 text-center py-8">Failed to load R2 files: ${escHtml(e.message)}</p>`;
+  }
+}
+
+async function loadFromR2(key, name) {
+  const srcLabel = document.getElementById('html-source-label');
+  if (srcLabel) srcLabel.textContent = 'Loading…';
+  try {
+    const resp = await fetch('/api/html-files/' + key.split('/').map(encodeURIComponent).join('/'));
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const html = await resp.text();
+    closeR2Picker();
+    loadHTMLText(html, name + ' (R2)');
+  } catch(e) {
+    alert('Failed to load file: ' + e.message);
+    if (srcLabel) srcLabel.textContent = '';
+  }
+}
+
+async function deleteR2File(key, btn) {
+  if (!confirm('Delete this file from R2? This cannot be undone.')) return;
+  btn.disabled = true;
+  btn.textContent = '…';
+  try {
+    const resp = await fetch('/api/html-files/' + key.split('/').map(encodeURIComponent).join('/'), { method: 'DELETE' });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const rowId = 'r2-row-' + CSS.escape(key);
+    const row = document.getElementById(rowId);
+    if (row) { row.style.opacity = '0'; setTimeout(() => row.remove(), 200); }
+  } catch(e) {
+    alert('Delete failed: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = 'Delete';
+  }
+}
+
+function escAttr(s) { return s.replace(/'/g, "\\'").replace(/"/g, '&quot;'); }
 
 // Drag-and-drop HTML file onto the html-groups area
 function initHTMLDropZone() {
