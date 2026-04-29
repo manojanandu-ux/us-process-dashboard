@@ -51,7 +51,8 @@
     .changes-viewer a:hover { color:#1d4ed8; }
     .changes-viewer br { display:block; margin:2px 0; content:""; }
     .html-card { border-left: 3px solid #f59e0b; }
-    #html-groups { padding-bottom: 40px; }
+    #html-groups { padding-bottom: 40px; min-height: 120px; }
+    #html-groups.html-drop-active { outline: 2px dashed #38bdf8; outline-offset: 4px; border-radius: 12px; background: #f0f9ff; }
   </style>
 </head>
 <body class="bg-white text-zinc-900 min-h-screen">
@@ -298,7 +299,14 @@
             </svg>
             <span class="text-sm font-semibold text-zinc-800">HTML Changes</span>
             <span class="mono text-xs bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full" id="html-count">—</span>
+            <span class="text-xs text-zinc-300 mono" id="html-source-label"></span>
           </div>
+          <!-- Upload HTML file button -->
+          <label id="html-upload-btn" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 border border-dashed border-zinc-300 text-zinc-500 hover:border-sky-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg cursor-pointer transition-all">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+            <span id="html-upload-btn-label">Upload HTML Report</span>
+            <input type="file" id="html-file-input" accept=".html,.htm" class="hidden" onchange="handleHTMLFileInput(this)">
+          </label>
           <div class="relative flex-1 min-w-52 max-w-sm">
             <svg class="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
@@ -543,6 +551,13 @@ function processData() {
   })();
   renderHTMLChanges();
   updateHTMLChangesStat();
+  initHTMLDropZone();
+
+  // Sync upload button label with current html source
+  const btnLabel = document.getElementById('html-upload-btn-label');
+  const srcLabel = document.getElementById('html-source-label');
+  if (btnLabel) btnLabel.textContent = htmlData.length ? 'Replace HTML Report' : 'Upload HTML Report';
+  if (srcLabel) srcLabel.textContent = htmlData.length && htmlFileName ? htmlFileName : '';
 }
 
 function populateFilters() {
@@ -1671,8 +1686,18 @@ document.addEventListener('DOMContentLoaded', autoLoadD1);
 
 // ── HTML CHANGES ──
 
+function handleHTMLFileInput(input) {
+  if (input.files[0]) loadHTMLFile(input.files[0]);
+  input.value = '';  // reset so same file can be re-selected
+}
+
 function loadHTMLFile(file) {
   htmlFileName = file.name;
+
+  // Update button label to show parsing in progress
+  const btnLabel = document.getElementById('html-upload-btn-label');
+  if (btnLabel) btnLabel.textContent = 'Parsing…';
+
   const reader = new FileReader();
   reader.onload = evt => {
     htmlData = parseHTMLReport(evt.target.result);
@@ -1685,11 +1710,42 @@ function loadHTMLFile(file) {
 
     document.getElementById('tc-html').textContent = htmlData.length.toLocaleString();
 
+    // Update button and source label
+    if (btnLabel) btnLabel.textContent = 'Replace HTML Report';
+    const srcLabel = document.getElementById('html-source-label');
+    if (srcLabel) srcLabel.textContent = file.name;
+
     renderHTMLChanges();
     updateHTMLChangesStat();
-    if (mapRendered) { aggregateByState(); renderMap(); renderMapStateTable(); }
+    buildURLIndex();
+    updateHTMLClassStats();
+    aggregateByState();
+    if (mapRendered) { renderMap(); renderMapStateTable(); }
   };
   reader.readAsText(file, 'UTF-8');
+}
+
+// Drag-and-drop HTML file onto the html-groups area
+function initHTMLDropZone() {
+  const zone = document.getElementById('html-groups');
+  if (!zone) return;
+  zone.addEventListener('dragover', e => {
+    const hasFile = [...(e.dataTransfer?.items || [])].some(i => i.kind === 'file');
+    if (!hasFile) return;
+    e.preventDefault();
+    zone.classList.add('html-drop-active');
+  });
+  zone.addEventListener('dragleave', e => {
+    if (!zone.contains(e.relatedTarget)) zone.classList.remove('html-drop-active');
+  });
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('html-drop-active');
+    const file = e.dataTransfer?.files[0];
+    if (file && (file.name.endsWith('.html') || file.name.endsWith('.htm'))) {
+      loadHTMLFile(file);
+    }
+  });
 }
 
 function parseHTMLReport(htmlText) {
@@ -1758,9 +1814,11 @@ function renderHTMLChanges() {
   if (!container) return;
 
   if (!items.length) {
-    container.innerHTML = `<div class="text-center py-24 text-zinc-300">
+    const noHtml = htmlData.length === 0;
+    container.innerHTML = `<div class="text-center py-20 text-zinc-300 select-none">
       <svg class="w-10 h-10 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-      <p class="text-sm text-zinc-400 mt-1">${htmlData.length ? 'No changes match your filters' : 'HTML report not loaded'}</p>
+      <p class="text-sm text-zinc-400 mt-1">${noHtml ? 'No HTML report loaded' : 'No changes match your filters'}</p>
+      ${noHtml ? `<p class="text-xs text-zinc-300 mt-1">Click <strong class="text-zinc-400">Upload HTML Report</strong> above or drop a file here</p>` : ''}
     </div>`;
     return;
   }
