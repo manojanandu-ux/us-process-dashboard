@@ -1817,7 +1817,11 @@ function loadHTMLFile(file) {
   const reader = new FileReader();
   reader.onload = async evt => {
     loadHTMLText(evt.target.result, file.name);
-    await _uploadHTMLToR2(file);
+    const parsedItems = [...htmlData]; // capture after synchronous parse
+    await Promise.all([
+      _uploadHTMLToR2(file),
+      _importHTMLToD1(parsedItems, activeUploadId),
+    ]);
   };
   reader.readAsText(file, 'UTF-8');
 }
@@ -1832,11 +1836,28 @@ async function _uploadHTMLToR2(file) {
     if (d.ok) {
       const srcLabel = document.getElementById('html-source-label');
       if (srcLabel) srcLabel.textContent = file.name + ' · R2 ' + d.date;
-      // Refresh Manage Data panel if it's open
       if (!document.getElementById('manage-panel').classList.contains('hidden')) loadManageList();
     }
   } catch(e) {
     console.warn('R2 upload failed:', e);
+  }
+}
+
+async function _importHTMLToD1(items, uploadId) {
+  if (!uploadId || !items.length) return;
+  try {
+    const resp = await fetch('/api/html-changes/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ upload_id: uploadId, items }),
+    });
+    const d = await resp.json();
+    if (d.ok) {
+      const u = allUploads.find(x => x.id === uploadId);
+      if (u) u.html_items = d.inserted;
+    }
+  } catch(e) {
+    console.warn('D1 HTML import failed:', e);
   }
 }
 
