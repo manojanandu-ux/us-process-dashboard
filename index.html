@@ -776,24 +776,114 @@ function renderFailed() {
 function openModal(tab, idx) {
   const row = filtered[tab][idx];
   if (!row) return;
-
+  _modalStack = [];
   const handlers = { approved: buildApprovedDetail, rejected: buildRejectedDetail, failed: buildFailedDetail };
-  document.getElementById('modal-title').textContent =
-    tab==='approved' ? (row['Project_Name']||row['Heading']||'Project Details') : truncate(row['Heading']||'Record Details', 80);
-
-  document.getElementById('modal-body').innerHTML = handlers[tab](row);
-
-  const panel = document.getElementById('modal-panel');
-  const overlay = document.getElementById('modal-overlay');
-  panel.classList.remove('hidden'); overlay.classList.remove('hidden');
-  requestAnimationFrame(() => { panel.classList.add('open'); overlay.classList.add('open'); });
+  const title = tab==='approved' ? (row['Project_Name']||row['Heading']||'Project Details') : truncate(row['Heading']||'Record Details', 80);
+  pushModal(title, handlers[tab](row));
 }
 
 function closeModal() {
+  _modalStack = [];
   const panel = document.getElementById('modal-panel');
   const overlay = document.getElementById('modal-overlay');
   panel.classList.remove('open'); overlay.classList.remove('open');
   setTimeout(() => { panel.classList.add('hidden'); overlay.classList.add('hidden'); }, 250);
+}
+
+// ── MODAL STACK (back-navigation for nested detail views) ──
+let _modalStack = [];
+
+function pushModal(title, bodyHTML) {
+  _modalStack.push({ title, html: bodyHTML });
+  _renderModal();
+}
+
+function popModal() {
+  _modalStack.pop();
+  if (_modalStack.length === 0) { closeModal(); return; }
+  _renderModal();
+}
+
+function _renderModal() {
+  const top = _modalStack[_modalStack.length - 1];
+  document.getElementById('modal-title').textContent = top.title;
+  const backBtn = _modalStack.length > 1
+    ? `<button onclick="popModal()" class="inline-flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-700 mb-4 transition-colors font-medium">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+        Back
+       </button>`
+    : '';
+  document.getElementById('modal-body').innerHTML = backBtn + top.html;
+  const panel = document.getElementById('modal-panel');
+  const overlay = document.getElementById('modal-overlay');
+  if (panel.classList.contains('hidden')) {
+    panel.classList.remove('hidden'); overlay.classList.remove('hidden');
+    requestAnimationFrame(() => { panel.classList.add('open'); overlay.classList.add('open'); });
+  }
+}
+
+function openCSVMatchModal(htmlItemIdx, category) {
+  const item = (window._htmlFiltered || htmlData)[htmlItemIdx];
+  if (!item) return;
+  const csvMatch = urlToCSVRows[normalizeURL(item.url)];
+  if (!csvMatch) return;
+  _modalStack = [];
+  _pushCategoryList(csvMatch, category);
+}
+
+function openDetailCategoryList(category) {
+  const csvMatch = window._htmlDetailCSVMatch;
+  if (!csvMatch) return;
+  _pushCategoryList(csvMatch, category);
+}
+
+function _pushCategoryList(csvMatch, category) {
+  const rows = csvMatch[category] || [];
+  window._htmlMatchedRows = rows;
+  window._htmlMatchedCategory = category;
+  const catLabel = { approved:'Approved', rejected:'Rejected', failed:'Failed' }[category];
+  const colors = {
+    approved: ['bg-emerald-50','border-emerald-200','text-emerald-600'],
+    rejected: ['bg-amber-50','border-amber-200','text-amber-600'],
+    failed:   ['bg-red-50','border-red-200','text-red-600'],
+  }[category];
+  const listHTML = rows.length === 0
+    ? '<div class="text-sm text-zinc-400 text-center py-8">No records in this category</div>'
+    : `<div class="space-y-2">${rows.map((row, i) => {
+        const heading = row['Heading'] || row['Project_Name'] || '—';
+        const link    = (row['Web Page'] || row['Link'] || '').trim();
+        return `<button class="w-full flex items-start gap-2 p-3 rounded-xl border ${colors[0]} ${colors[1]} hover:opacity-75 transition-opacity text-left" onclick="openMatchedRowDetail(${i})">
+          <span class="text-xs font-semibold ${colors[2]} whitespace-nowrap mt-0.5">${catLabel}</span>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm text-zinc-800 font-medium leading-snug">${truncate(heading,80)}</div>
+            ${link ? `<div class="text-xs text-zinc-400 mono truncate mt-1">${truncate(link,60)}</div>` : ''}
+          </div>
+          <svg class="w-4 h-4 text-zinc-300 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+        </button>`;
+      }).join('')}</div>`;
+  pushModal(`${catLabel} — ${rows.length} record${rows.length!==1?'s':''}`, listHTML);
+}
+
+function openMatchedRowDetail(i) {
+  const row = (window._htmlMatchedRows || [])[i];
+  if (!row) return;
+  const category = window._htmlMatchedCategory || 'approved';
+  const builders = { approved:buildApprovedDetail, rejected:buildRejectedDetail, failed:buildFailedDetail };
+  const title = row['Project_Name'] || row['Heading'] || 'Record Detail';
+  pushModal(truncate(title, 60), builders[category](row));
+}
+
+function openDetailMatchedRow(i) {
+  const row = (window._htmlDetailMatched || [])[i];
+  if (!row) return;
+  const st  = (row['Processing_Status']||'').trim();
+  const isp = (row['Is_Project']||'').trim();
+  const category = st==='Failed' ? 'failed' : isp==='True' ? 'approved' : 'rejected';
+  window._htmlMatchedRows = [row];
+  window._htmlMatchedCategory = category;
+  const builders = { approved:buildApprovedDetail, rejected:buildRejectedDetail, failed:buildFailedDetail };
+  const title = row['Project_Name'] || row['Heading'] || 'Record Detail';
+  pushModal(truncate(title, 60), builders[category](row));
 }
 
 function fld(label, val) {
@@ -1396,12 +1486,8 @@ function showStateDetail(abbr) {
   // On other tabs: open modal with full state detail
   const sd = stateData[abbr] || { total:0, approved:0, rejected:0, failed:0, htmlChanges:0 };
   const stateChanges = htmlData.filter(d => d.groupKey.trim().toUpperCase() === abbr);
-  document.getElementById('modal-title').textContent = (ABBR_TO_NAME[abbr] || abbr) + ' — State Detail';
-  document.getElementById('modal-body').innerHTML = buildStateDetailHTML(abbr, sd, stateChanges);
-  const panel = document.getElementById('modal-panel');
-  const overlay = document.getElementById('modal-overlay');
-  panel.classList.remove('hidden'); overlay.classList.remove('hidden');
-  requestAnimationFrame(() => { panel.classList.add('open'); overlay.classList.add('open'); });
+  _modalStack = [];
+  pushModal((ABBR_TO_NAME[abbr] || abbr) + ' — State Detail', buildStateDetailHTML(abbr, sd, stateChanges));
 }
 
 function buildStateDetailHTML(abbr, sd, changes) {
@@ -1841,9 +1927,9 @@ function renderHTMLChanges() {
         : '#fbbf24';
 
       const badges = csvMatch ? [
-        hasApproved ? `<span class="inline-flex items-center gap-1 text-xs font-semibold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full whitespace-nowrap"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span>${csvMatch.approved.length} Approved</span>` : '',
-        hasRejected ? `<span class="inline-flex items-center gap-1 text-xs font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full whitespace-nowrap"><span class="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block"></span>${csvMatch.rejected.length} Rejected</span>` : '',
-        hasFailed   ? `<span class="inline-flex items-center gap-1 text-xs font-semibold bg-red-100 text-red-700 px-2 py-0.5 rounded-full whitespace-nowrap"><span class="w-1.5 h-1.5 rounded-full bg-red-400 inline-block"></span>${csvMatch.failed.length} Failed</span>` : '',
+        hasApproved ? `<button class="inline-flex items-center gap-1 text-xs font-semibold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full whitespace-nowrap hover:bg-emerald-200 transition-colors" onclick="event.stopPropagation(); openCSVMatchModal(${globalIdx}, 'approved')"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span>${csvMatch.approved.length} Approved</button>` : '',
+        hasRejected ? `<button class="inline-flex items-center gap-1 text-xs font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full whitespace-nowrap hover:bg-amber-200 transition-colors" onclick="event.stopPropagation(); openCSVMatchModal(${globalIdx}, 'rejected')"><span class="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block"></span>${csvMatch.rejected.length} Rejected</button>` : '',
+        hasFailed   ? `<button class="inline-flex items-center gap-1 text-xs font-semibold bg-red-100 text-red-700 px-2 py-0.5 rounded-full whitespace-nowrap hover:bg-red-200 transition-colors" onclick="event.stopPropagation(); openCSVMatchModal(${globalIdx}, 'failed')"><span class="w-1.5 h-1.5 rounded-full bg-red-400 inline-block"></span>${csvMatch.failed.length} Failed</button>` : '',
       ].filter(Boolean).join('') : '';
 
       let displayURL = '';
@@ -1899,28 +1985,26 @@ function renderHTMLChanges() {
 function openHTMLModal(idx) {
   const item = (window._htmlFiltered || htmlData)[idx];
   if (!item) return;
-  document.getElementById('modal-title').textContent = truncate(item.title || 'Change Details', 80);
-  document.getElementById('modal-body').innerHTML = buildHTMLDetail(item);
-  const panel = document.getElementById('modal-panel');
-  const overlay = document.getElementById('modal-overlay');
-  panel.classList.remove('hidden'); overlay.classList.remove('hidden');
-  requestAnimationFrame(() => { panel.classList.add('open'); overlay.classList.add('open'); });
+  _modalStack = [];
+  pushModal(truncate(item.title || 'Change Details', 80), buildHTMLDetail(item));
 }
 
 function buildHTMLDetail(item) {
   const fullName  = ABBR_TO_NAME[item.groupKey] ? item.groupKey + ' — ' + ABBR_TO_NAME[item.groupKey] : item.groupKey;
   const csvMatch  = urlToCSVRows[normalizeURL(item.url)];
   const allMatched = csvMatch ? [...csvMatch.approved, ...csvMatch.rejected, ...csvMatch.failed] : [];
+  window._htmlDetailMatched  = allMatched;
+  window._htmlDetailCSVMatch = csvMatch;
 
   const csvSection = allMatched.length ? `<div class="mb-5">
     <div class="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">Matched CSV Records <span class="font-normal text-zinc-300">(matched via Web Page URL)</span></div>
     <div class="flex gap-2 mb-3">
-      ${csvMatch.approved.length ? `<span class="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium">${csvMatch.approved.length} Approved</span>` : ''}
-      ${csvMatch.rejected.length ? `<span class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">${csvMatch.rejected.length} Rejected</span>` : ''}
-      ${csvMatch.failed.length   ? `<span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">${csvMatch.failed.length} Failed</span>` : ''}
+      ${csvMatch.approved.length ? `<button class="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium hover:bg-emerald-200 transition-colors" onclick="openDetailCategoryList('approved')">${csvMatch.approved.length} Approved</button>` : ''}
+      ${csvMatch.rejected.length ? `<button class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium hover:bg-amber-200 transition-colors" onclick="openDetailCategoryList('rejected')">${csvMatch.rejected.length} Rejected</button>` : ''}
+      ${csvMatch.failed.length   ? `<button class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium hover:bg-red-200 transition-colors" onclick="openDetailCategoryList('failed')">${csvMatch.failed.length} Failed</button>` : ''}
     </div>
     <div class="space-y-1.5 max-h-56 overflow-y-auto">
-      ${allMatched.slice(0,30).map(row => {
+      ${allMatched.slice(0,30).map((row, i) => {
         const st  = (row['Processing_Status']||'').trim();
         const isp = (row['Is_Project']||'').trim();
         const cat = st==='Failed' ? ['bg-red-50 border-red-200','text-red-600','Failed'] :
@@ -1928,13 +2012,14 @@ function buildHTMLDetail(item) {
                                     ['bg-amber-50 border-amber-200','text-amber-600','Rejected'];
         const heading = row['Heading'] || row['Project_Name'] || row['Text'] || '—';
         const link    = (row['Link'] || row['Web Page'] || '').trim();
-        return `<div class="flex items-start gap-2 p-2.5 rounded-lg border ${cat[0]}">
+        return `<button class="w-full flex items-start gap-2 p-2.5 rounded-lg border ${cat[0]} hover:opacity-75 transition-opacity text-left" onclick="openDetailMatchedRow(${i})">
           <span class="text-xs font-semibold ${cat[1]} whitespace-nowrap mt-0.5">${cat[2]}</span>
           <div class="flex-1 min-w-0">
             <div class="text-xs text-zinc-800 font-medium leading-snug">${truncate(heading,80)}</div>
             ${link ? `<div class="text-xs text-zinc-400 mono truncate mt-0.5">${truncate(link,55)}</div>` : ''}
           </div>
-        </div>`;
+          <svg class="w-3.5 h-3.5 text-zinc-300 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+        </button>`;
       }).join('')}
       ${allMatched.length > 30 ? `<div class="text-xs text-zinc-300 text-center pt-1">… and ${allMatched.length-30} more</div>` : ''}
     </div>
