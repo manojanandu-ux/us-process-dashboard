@@ -52,15 +52,18 @@ export default {
     }
 
     // ── DELETE /api/uploads/:id ───────────────────────────────────────────────
-    if (request.method === "DELETE") {
-      const m = pathname.match(/^\/api\/uploads\/([^/]+)$/);
-      if (!m) return err("Not found", 404);
-      const uploadId = m[1];
+    if (request.method === "DELETE" && pathname.match(/^\/api\/uploads\/[^/]+$/)) {
+      const uploadId = pathname.split("/").pop();
+      // Fetch html_file key before deleting so we can clean R2 too
+      const uploadRow = await env.DB.prepare("SELECT html_file FROM uploads WHERE id = ?").bind(uploadId).first();
       await Promise.all([
         env.DB.prepare("DELETE FROM csv_records WHERE upload_id = ?").bind(uploadId).run(),
         env.DB.prepare("DELETE FROM html_changes WHERE upload_id = ?").bind(uploadId).run(),
       ]);
       await env.DB.prepare("DELETE FROM uploads WHERE id = ?").bind(uploadId).run();
+      if (uploadRow?.html_file) {
+        await env.HTML_BUCKET.delete(uploadRow.html_file).catch(() => {});
+      }
       return json({ ok: true, deleted_id: uploadId });
     }
 
@@ -204,8 +207,9 @@ export default {
 
     // ── /api/html-upload (POST) ────────────────────────────────────────────────
     if (pathname === "/api/html-upload" && request.method === "POST") {
-      const form = await request.formData();
-      const file = form.get("file");
+      const form     = await request.formData();
+      const file     = form.get("file");
+      const uploadId = (form.get("upload_id") || "").trim();
       if (!file) return err("No file provided");
       const now      = new Date();
       const dateStr  = now.toISOString().slice(0, 10);
@@ -213,8 +217,13 @@ export default {
       const key      = `${dateStr}/${now.getTime()}-${filename}`;
       await env.HTML_BUCKET.put(key, file.stream(), {
         httpMetadata:   { contentType: "text/html; charset=utf-8" },
-        customMetadata: { originalName: filename, uploadedAt: now.toISOString(), size: String(file.size) },
+        customMetadata: { originalName: filename, uploadedAt: now.toISOString(), size: String(file.size), uploadId },
       });
+      // Link R2 key to D1 upload record so Manage Data can show it
+      if (uploadId) {
+        await env.DB.prepare("UPDATE uploads SET html_file = ? WHERE id = ?")
+          .bind(key, uploadId).run();
+      }
       return json({ ok: true, key, name: filename, date: dateStr, size: file.size });
     }
 
@@ -248,6 +257,11 @@ export default {
       }
       if (request.method === "DELETE") {
         await env.HTML_BUCKET.delete(key);
+        // Also clear html_file on the linked upload record if upload_id provided
+        const uid = p.upload_id || "";
+        if (uid) {
+          await env.DB.prepare("UPDATE uploads SET html_file = '' WHERE id = ?").bind(uid).run();
+        }
         return json({ ok: true, deleted_key: key });
       }
       return err("Method not allowed", 405);
