@@ -1198,7 +1198,7 @@ function annotCell(row) {
 function exportExcel() {
   if (!window.XLSX) { alert('Excel library not loaded'); return; }
   const wb      = XLSX.utils.book_new();
-  const exclude = new Set(['Formatted_Content']);
+  const exclude = new Set(['Formatted_Content', 'Method_Used']);
   let   hasData = false;
 
   ['approved','rejected','failed'].forEach(tab => {
