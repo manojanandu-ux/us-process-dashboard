@@ -1574,38 +1574,7 @@ function updateHTMLChangesStat() {
 }
 
 function updateHTMLClassStats() {
-  // Build set of unique URLs that appear in the HTML report
-  const monitoredURLs = new Set();
-  for (const item of htmlData) {
-    const key = normalizeURL(item.url);
-    if (key) monitoredURLs.add(key);
-  }
-
-  // Count each CSV row exactly once, only if it belongs to a monitored page
-  let totAp = 0, totRj = 0, totFa = 0;
-  for (const row of allData) {
-    const wp = normalizeURL(row['Web Page']);
-    const lk = normalizeURL(row['Link'] || '');
-    const isMonitored = (wp && monitoredURLs.has(wp)) || (lk && monitoredURLs.has(lk));
-    if (!isMonitored) continue;
-    const status = (row['Processing_Status'] || '').trim();
-    const isProj  = (row['Is_Project'] || '').trim();
-    if (status === 'Failed') totFa++;
-    else if (isProj === 'True') totAp++;
-    else totRj++;
-  }
-
-  const tot = totAp + totRj + totFa || 1;
-  const el = id => document.getElementById(id);
-  el('hc-approved').textContent    = totAp.toLocaleString();
-  el('hc-rejected').textContent    = totRj.toLocaleString();
-  el('hc-failed').textContent      = totFa.toLocaleString();
-  el('hc-approved-of').textContent = `/ ${approved.length.toLocaleString()}`;
-  el('hc-rejected-of').textContent = `/ ${rejected.length.toLocaleString()}`;
-  el('hc-failed-of').textContent   = `/ ${failed.length.toLocaleString()}`;
-  el('hcbar-approved').style.width = (totAp/tot*100).toFixed(1) + '%';
-  el('hcbar-rejected').style.width = (totRj/tot*100).toFixed(1) + '%';
-  el('hcbar-failed').style.width   = (totFa/tot*100).toFixed(1) + '%';
+  // stat cards removed — nothing to update
 }
 
 function filterHTMLChangesByState(abbr) {
