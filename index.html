@@ -1603,9 +1603,10 @@ function updateHTMLClassStats() {
     seen.add(key);
     const m = urlToCSVRows[key];
     if (!m) continue;
-    totAp += m.approved.length;
-    totRj += m.rejected.length;
-    totFa += m.failed.length;
+    // Count the HTML item in one category — approved wins, then rejected, then failed
+    if (m.approved.length > 0) totAp++;
+    else if (m.rejected.length > 0) totRj++;
+    else totFa++;
   }
   const tot = totAp + totRj + totFa || 1;
   const el = id => document.getElementById(id);
@@ -2132,29 +2133,6 @@ function renderAdminStats() {
         <div class="flex items-center justify-between px-4 py-2.5 text-xs"><span class="text-zinc-400">Upload ID</span><span class="mono text-zinc-300 text-xs">${activeUploadId}</span></div>
         <div class="flex items-center justify-between px-4 py-2.5 text-xs"><span class="text-zinc-400">Total Records</span><span class="mono font-semibold text-zinc-700">${totalCSV.toLocaleString()} CSV &nbsp;·&nbsp; ${totalHTML.toLocaleString()} HTML changes</span></div>
       </div>
-    </section>
-
-    <!-- Coverage -->
-    <section class="mb-7">
-      <div class="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-3">Data Coverage</div>
-      <div class="grid grid-cols-2 gap-3 mb-3">
-        <div class="bg-white border border-zinc-200 rounded-xl p-4">
-          <div class="text-xs text-zinc-400 mb-1">CSV → HTML matched</div>
-          <div class="text-2xl font-bold mono text-zinc-900 mb-2">${csvMatchedHTML.toLocaleString()} <span class="text-sm text-zinc-400 font-normal">/ ${totalCSV.toLocaleString()}</span></div>
-          <div class="flex items-center gap-2">${_adminBar(pct(csvMatchedHTML,totalCSV), 'bg-emerald-500')}<span class="mono text-xs font-bold text-emerald-600 w-12 text-right">${pct(csvMatchedHTML,totalCSV)}%</span></div>
-          <div class="text-xs text-zinc-300 mt-1.5">${(totalCSV-csvMatchedHTML).toLocaleString()} unmatched</div>
-        </div>
-        <div class="bg-white border border-zinc-200 rounded-xl p-4">
-          <div class="text-xs text-zinc-400 mb-1">HTML → CSV matched</div>
-          <div class="text-2xl font-bold mono text-zinc-900 mb-2">${htmlMatchedCSV.toLocaleString()} <span class="text-sm text-zinc-400 font-normal">/ ${totalHTML.toLocaleString()}</span></div>
-          <div class="flex items-center gap-2">${_adminBar(pct(htmlMatchedCSV,totalHTML), 'bg-sky-500')}<span class="mono text-xs font-bold text-sky-600 w-12 text-right">${pct(htmlMatchedCSV,totalHTML)}%</span></div>
-          <div class="text-xs text-zinc-300 mt-1.5">${(totalHTML-htmlMatchedCSV).toLocaleString()} unmatched</div>
-        </div>
-      </div>
-      ${(totalCSV && totalHTML) ? `<div class="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-        <span class="font-semibold">${(totalCSV-csvMatchedHTML).toLocaleString()}</span> CSV records have no HTML change &nbsp;·&nbsp;
-        <span class="font-semibold">${(totalHTML-htmlMatchedCSV).toLocaleString()}</span> HTML changes have no CSV record
-      </div>` : ''}
     </section>
 
     <!-- LLM Classification -->
