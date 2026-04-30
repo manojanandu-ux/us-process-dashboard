@@ -8,6 +8,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/topojson@3/dist/topojson.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     body { font-family: 'Inter', sans-serif; }
@@ -135,6 +136,10 @@
         </select>
       </div>
       <div class="flex items-center gap-2">
+        <button onclick="openAdminPanel()" class="text-xs text-zinc-400 hover:text-zinc-800 transition-colors flex items-center gap-1.5 border border-zinc-200 hover:border-zinc-300 rounded-lg px-2.5 py-1.5 bg-white">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+          Admin
+        </button>
         <button onclick="openManagePanel()" class="text-xs text-zinc-400 hover:text-zinc-800 transition-colors flex items-center gap-1.5 border border-zinc-200 hover:border-zinc-300 rounded-lg px-2.5 py-1.5 bg-white">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
           Manage Data
@@ -157,17 +162,20 @@
       </div>
       <div class="bg-white border border-zinc-200 rounded-xl p-4">
         <div class="text-2xl font-bold text-emerald-600 mono" id="s-approved">0</div>
-        <div class="text-xs text-zinc-500 mt-1">LLM Approved</div>
+        <div class="text-xs text-zinc-500 mt-0.5">LLM Approved</div>
+        <div class="text-xs text-zinc-300 mt-0.5">all CSV records</div>
         <div class="mt-2 h-0.5 bg-emerald-100 rounded-full overflow-hidden"><div id="bar-approved" class="h-full bg-emerald-500 rounded-full transition-all duration-700" style="width:0%"></div></div>
       </div>
       <div class="bg-white border border-zinc-200 rounded-xl p-4">
         <div class="text-2xl font-bold text-amber-500 mono" id="s-rejected">0</div>
-        <div class="text-xs text-zinc-500 mt-1">LLM Rejected</div>
+        <div class="text-xs text-zinc-500 mt-0.5">LLM Rejected</div>
+        <div class="text-xs text-zinc-300 mt-0.5">all CSV records</div>
         <div class="mt-2 h-0.5 bg-amber-100 rounded-full overflow-hidden"><div id="bar-rejected" class="h-full bg-amber-400 rounded-full transition-all duration-700" style="width:0%"></div></div>
       </div>
       <div class="bg-white border border-zinc-200 rounded-xl p-4">
         <div class="text-2xl font-bold text-red-500 mono" id="s-failed">0</div>
-        <div class="text-xs text-zinc-500 mt-1">Failed Extraction</div>
+        <div class="text-xs text-zinc-500 mt-0.5">Failed Extraction</div>
+        <div class="text-xs text-zinc-300 mt-0.5">all CSV records</div>
         <div class="mt-2 h-0.5 bg-red-100 rounded-full overflow-hidden"><div id="bar-failed" class="h-full bg-red-400 rounded-full transition-all duration-700" style="width:0%"></div></div>
       </div>
     </div>
@@ -225,12 +233,22 @@
       <select id="type-filter" class="px-3 py-2 text-sm border border-zinc-200 rounded-lg bg-white focus:outline-none text-zinc-600 cursor-pointer approved-only hidden" onchange="applyFilters()">
         <option value="">All Types</option>
       </select>
+      <select id="annotation-filter" class="px-3 py-2 text-sm border border-zinc-200 rounded-lg bg-white focus:outline-none text-zinc-600 cursor-pointer" onchange="applyFilters()">
+        <option value="">All Annotations</option>
+        <option value="__none__">No Annotation</option>
+        <option value="Need to Create">Need to Create</option>
+        <option value="Already exists">Already exists</option>
+        <option value="Not a project">Not a project</option>
+        <option value="Other sector">Other sector</option>
+        <option value="Duplicate Link">Duplicate Link</option>
+        <option value="Need to Update">Need to Update</option>
+      </select>
       <div class="ml-auto flex items-center gap-2">
         <span class="text-xs text-zinc-400 mono" id="showing-count">—</span>
         <button onclick="clearFilters()" class="text-xs text-zinc-500 hover:text-zinc-800 border border-zinc-200 hover:border-zinc-300 rounded-lg px-2.5 py-1.5 bg-white transition-colors">Clear</button>
-        <button onclick="exportCSV()" class="text-xs text-zinc-600 hover:text-zinc-900 border border-zinc-200 hover:border-zinc-300 rounded-lg px-2.5 py-1.5 bg-white transition-colors flex items-center gap-1">
+        <button onclick="exportExcel()" class="text-xs text-zinc-600 hover:text-zinc-900 border border-zinc-200 hover:border-zinc-300 rounded-lg px-2.5 py-1.5 bg-white transition-colors flex items-center gap-1">
           <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-          Export
+          Export Excel
         </button>
       </div>
     </div>
@@ -323,6 +341,20 @@
           <select id="html-folder-filter" class="px-3 py-2 text-sm border border-zinc-200 rounded-lg bg-white focus:outline-none text-zinc-600 cursor-pointer" onchange="renderHTMLChanges()">
             <option value="">All States</option>
           </select>
+          <select id="html-annotation-filter" class="px-3 py-2 text-sm border border-zinc-200 rounded-lg bg-white focus:outline-none text-zinc-600 cursor-pointer" onchange="renderHTMLChanges()">
+            <option value="">All Annotations</option>
+            <option value="__none__">No Annotation</option>
+            <option value="Need to Create">Need to Create</option>
+            <option value="Already exists">Already exists</option>
+            <option value="Not a project">Not a project</option>
+            <option value="Other sector">Other sector</option>
+            <option value="Duplicate Link">Duplicate Link</option>
+            <option value="Need to Update">Need to Update</option>
+          </select>
+          <button onclick="exportHTMLExcel()" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 border border-zinc-200 text-zinc-500 hover:border-emerald-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-all bg-white">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            Export HTML
+          </button>
           <div id="html-active-state" class="hidden flex items-center gap-2 px-3 py-1.5 bg-sky-50 border border-sky-200 rounded-lg">
             <svg class="w-3.5 h-3.5 text-sky-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
@@ -353,6 +385,7 @@
               <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide" onclick="sortTable('approved','Bid_Deadline')">Deadline <span class="text-zinc-300 text-xs">↕</span></th>
               <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide" onclick="sortTable('approved','Confidence')">Confidence <span class="text-zinc-300 text-xs">↕</span></th>
               <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Docs</th>
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Annotation</th>
               <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Link</th>
             </tr>
           </thead>
@@ -379,6 +412,7 @@
               <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Rejection Reason</th>
               <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide" onclick="sortTable('rejected','Content_Quality')">Quality <span class="text-zinc-300 text-xs">↕</span></th>
               <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Text</th>
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Annotation</th>
               <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Link</th>
             </tr>
           </thead>
@@ -405,6 +439,7 @@
               <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide" onclick="sortTable('failed','Content_Quality')">Quality <span class="text-zinc-300 text-xs">↕</span></th>
               <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Text</th>
               <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide" onclick="sortTable('failed','Processing_Date')">Date <span class="text-zinc-300 text-xs">↕</span></th>
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Annotation</th>
               <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Link</th>
             </tr>
           </thead>
@@ -437,6 +472,21 @@
       <div class="w-5 h-5 border-2 border-zinc-200 border-t-zinc-700 rounded-full animate-spin mx-auto"></div>
     </div>
   </div>
+</div>
+
+<!-- ── ADMIN PANEL ── -->
+<div id="admin-overlay" class="modal-overlay fixed inset-0 bg-black/25 backdrop-blur-sm z-50 hidden" onclick="closeAdminPanel()"></div>
+<div id="admin-panel" class="modal-panel fixed right-0 top-0 bottom-0 w-full max-w-2xl bg-white shadow-2xl z-50 flex flex-col hidden">
+  <div class="sticky top-0 bg-white border-b border-zinc-200 px-6 py-4 flex items-center justify-between">
+    <div>
+      <h2 class="font-semibold text-zinc-900 text-sm">Admin Dashboard</h2>
+      <p class="text-xs text-zinc-400 mt-0.5">Coverage, LLM accuracy &amp; annotation progress</p>
+    </div>
+    <button onclick="closeAdminPanel()" class="p-1 rounded-lg hover:bg-zinc-100 transition-colors">
+      <svg class="w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div id="admin-stats" class="flex-1 overflow-y-auto px-6 py-5"></div>
 </div>
 
 <!-- ── R2 PICKER PANEL ── -->
@@ -484,7 +534,10 @@ const PAGE_SIZE = 75;
 let htmlData = [], htmlLoaded = false, htmlFileName = '';
 let urlToCSVRows = {};
 let allUploads = [];   // list from /api/uploads
+let allR2Files = [];   // list from /api/html-files
 let activeUploadId = '';
+let _annotations = {};
+const ANNOTATION_OPTIONS = ['Need to Create','Already exists','Not a project','Other sector','Duplicate Link','Need to Update'];
 
 // ── D1 COLUMN MAPPING ──
 const D1_TO_CSV = {
@@ -602,11 +655,17 @@ function applyFilters() {
   const state  = document.getElementById('state-filter').value;
   const region = document.getElementById('region-filter').value;
   const type   = document.getElementById('type-filter').value;
+  const annot  = document.getElementById('annotation-filter').value;
 
   const ok = row => {
     if (state  && (row['State']||'').trim()  !== state)  return false;
     if (region && (row['Region']||'').trim() !== region) return false;
     if (type   && (row['Project_Type']||'').trim() !== type) return false;
+    if (annot) {
+      const rowAnnot = _annotations[rowAnnotKey(row)] || '';
+      if (annot === '__none__') { if (rowAnnot) return false; }
+      else { if (rowAnnot !== annot) return false; }
+    }
     if (q) {
       const blob = [row['Project_Name'],row['Agency'],row['Location'],row['City'],row['State'],
                     row['Heading'],row['Summary'],row['Scope'],row['Text'],row['Validation_Notes']]
@@ -625,7 +684,9 @@ function applyFilters() {
 
 function clearFilters() {
   document.getElementById('search-input').value = '';
-  ['state-filter','region-filter','type-filter'].forEach(id => document.getElementById(id).value = '');
+  ['state-filter','region-filter','type-filter','annotation-filter'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
   applyFilters();
 }
 
@@ -743,6 +804,7 @@ function renderApproved() {
       <td class="px-4 py-3 text-xs mono text-zinc-500 whitespace-nowrap">${truncate(row['Bid_Deadline'],22)}</td>
       <td class="px-4 py-3">${confBar(row['Confidence'])}</td>
       <td class="px-4 py-3">${docDots(row)}</td>
+      ${annotCell(row)}
       <td class="px-4 py-3">${linkIcon(url)}</td>
     </tr>`;
   }).join('');
@@ -767,6 +829,7 @@ function renderRejected() {
       <td class="px-4 py-3 text-xs text-zinc-500 max-w-xs">${truncate(row['Validation_Notes'],110)}</td>
       <td class="px-4 py-3">${qBadge(row['Content_Quality'])}</td>
       <td class="px-4 py-3 text-xs text-zinc-500 max-w-xs"><span title="${(row['Text']||'').replace(/"/g,'&quot;')}">${truncate(row['Text'],120)}</span></td>
+      ${annotCell(row)}
       <td class="px-4 py-3">${linkIcon(url)}</td>
     </tr>`;
   }).join('');
@@ -791,6 +854,7 @@ function renderFailed() {
       <td class="px-4 py-3">${qBadge(row['Content_Quality'])}</td>
       <td class="px-4 py-3 text-xs text-zinc-500 max-w-xs"><span title="${(row['Text']||'').replace(/"/g,'&quot;')}">${truncate(row['Text'],120)}</span></td>
       <td class="px-4 py-3 text-xs mono text-zinc-400 whitespace-nowrap">${row['Processing_Date']||'—'}</td>
+      ${annotCell(row)}
       <td class="px-4 py-3">${linkIcon(url)}</td>
     </tr>`;
   }).join('');
@@ -1100,20 +1164,108 @@ function switchTab(tab) {
   updateCount();
 }
 
+// ── ANNOTATIONS ──
+async function loadAnnotations(uploadId) {
+  _annotations = {};
+  if (!uploadId) return;
+  try {
+    const d = await (await fetch(`/api/annotations?upload_id=${encodeURIComponent(uploadId)}`)).json();
+    _annotations = d.annotations || {};
+  } catch(e) { console.warn('Failed to load annotations:', e); }
+}
+
+let _saveAnnotTimer = null;
+function saveAnnotation(sel) {
+  const key        = decodeURIComponent(sel.dataset.annotKey || '');
+  const annotation = sel.value;
+  if (!key || !activeUploadId) return;
+  if (annotation) { _annotations[key] = annotation; }
+  else            { delete _annotations[key]; }
+  clearTimeout(_saveAnnotTimer);
+  _saveAnnotTimer = setTimeout(async () => {
+    try {
+      await fetch('/api/annotations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ upload_id: activeUploadId, url_key: key, annotation }),
+      });
+    } catch(e) { console.warn('Annotation save failed:', e); }
+  }, 400);
+}
+
+function annotKey(item) {
+  return normalizeURL(item.url) || (item.title || '').trim().toLowerCase();
+}
+
+function rowAnnotKey(row) {
+  return normalizeURL(row['Link'] || row['Web Page'] || '');
+}
+
+function annotCell(row) {
+  const key = rowAnnotKey(row);
+  const cur = _annotations[key] || '';
+  return `<td class="px-4 py-3" onclick="event.stopPropagation()">
+    <select class="text-xs border border-zinc-200 rounded-lg px-2 py-1 bg-white text-zinc-600 focus:outline-none focus:border-zinc-400 cursor-pointer w-36"
+      data-annot-key="${encodeURIComponent(key)}"
+      onchange="saveAnnotation(this)"
+      onclick="event.stopPropagation()">
+      <option value="">—</option>
+      ${ANNOTATION_OPTIONS.map(o => `<option value="${o}" ${cur===o?'selected':''}>${o}</option>`).join('')}
+    </select>
+  </td>`;
+}
+
 // ── EXPORT ──
-function exportCSV() {
-  const data = filtered[currentTab];
-  if (!data.length) return;
-  // Exclude Formatted_Content (very large) from export
+function exportExcel() {
+  if (!window.XLSX) { alert('Excel library not loaded'); return; }
+  const wb      = XLSX.utils.book_new();
   const exclude = new Set(['Formatted_Content']);
-  const keys = Object.keys(data[0]).filter(k => !exclude.has(k));
-  const csv = [keys.join(','), ...data.map(row =>
-    keys.map(k => { const v = (row[k]||'').toString().replace(/"/g,'""'); return `"${v}"`; }).join(',')
-  )].join('\n');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
-  a.download = `blackridge_${currentTab}_${new Date().toISOString().slice(0,10)}.csv`;
-  a.click();
+  let   hasData = false;
+
+  ['approved','rejected','failed'].forEach(tab => {
+    const data = filtered[tab];
+    if (!data.length) return;
+    hasData = true;
+    const keys = Object.keys(data[0]).filter(k => !exclude.has(k));
+    const rows = data.map(row => {
+      const obj = {};
+      keys.forEach(k => { obj[k] = row[k] ?? ''; });
+      const url = normalizeURL(row['Link'] || row['Web Page'] || '');
+      obj['Annotation'] = _annotations[url] || '';
+      return obj;
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), tab.charAt(0).toUpperCase() + tab.slice(1));
+  });
+
+  if (!hasData) { alert('No data to export'); return; }
+  XLSX.writeFile(wb, `blackridge_export_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+function exportHTMLExcel() {
+  if (!window.XLSX) { alert('Excel library not loaded'); return; }
+  const items = window._htmlFiltered || htmlData;
+  if (!items.length) { alert('No HTML changes to export'); return; }
+
+  const rows = items.map(item => {
+    const match = urlToCSVRows[normalizeURL(item.url)];
+    const llm   = !match                  ? 'No Match'
+                : match.approved.length   ? 'Approved'
+                : match.failed.length     ? 'Failed'
+                :                           'Rejected';
+    return {
+      'Title':          item.title        || '',
+      'Date':           item.date         || '',
+      'URL':            item.url          || '',
+      'State':          item.groupKey     || '',
+      'LLM Status':     llm,
+      'Change Summary': item.changeSummary || '',
+      'Annotation':     _annotations[annotKey(item)] || '',
+    };
+  });
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'HTML Changes');
+  XLSX.writeFile(wb, `blackridge_html_${new Date().toISOString().slice(0,10)}.xlsx`);
 }
 
 // ── RESET ──
@@ -1124,7 +1276,7 @@ function resetDashboard() {
   sortState={approved:{col:'',dir:'asc'},rejected:{col:'',dir:'asc'},failed:{col:'',dir:'asc'}};
   stateData={}; mapMode='total'; mapRendered=false;
   htmlData=[]; htmlLoaded=false; htmlFileName='';
-  urlToCSVRows={}; activeUploadId='';
+  urlToCSVRows={}; activeUploadId=''; _annotations={};
   currentTab='htmlmap';
   ['state-filter','region-filter','type-filter'].forEach(id => {
     const el=document.getElementById(id); if(el){while(el.options.length>1) el.remove(1); el.value='';}
@@ -1444,8 +1596,12 @@ function updateHTMLChangesStat() {
 
 function updateHTMLClassStats() {
   let totAp = 0, totRj = 0, totFa = 0;
+  const seen = new Set();
   for (const item of htmlData) {
-    const m = urlToCSVRows[normalizeURL(item.url)];
+    const key = normalizeURL(item.url);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    const m = urlToCSVRows[key];
     if (!m) continue;
     totAp += m.approved.length;
     totRj += m.rejected.length;
@@ -1492,7 +1648,9 @@ function buildURLIndex() {
     const status  = (row['Processing_Status'] || '').trim();
     const isProj  = (row['Is_Project'] || '').trim();
     const cat = status === 'Failed' ? 'failed' : isProj === 'True' ? 'approved' : 'rejected';
-    for (const key of [webPage, link].filter(Boolean)) {
+    // deduplicate keys so a row where Web Page === Link isn't counted twice
+    const keys = [...new Set([webPage, link].filter(Boolean))];
+    for (const key of keys) {
       if (!urlToCSVRows[key]) urlToCSVRows[key] = { approved:[], rejected:[], failed:[] };
       urlToCSVRows[key][cat].push(row);
     }
@@ -1594,10 +1752,15 @@ async function autoLoadD1() {
   document.getElementById('d1-picker').classList.add('hidden');
   document.getElementById('d1-error').classList.add('hidden');
   try {
-    const resp = await fetch('/api/uploads?limit=50');
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const data = await resp.json();
-    allUploads = data.uploads || [];
+    const [uploadsResp, r2Resp] = await Promise.all([
+      fetch('/api/uploads?limit=50'),
+      fetch('/api/html-files').catch(() => null),
+    ]);
+    if (!uploadsResp.ok) throw new Error(`HTTP ${uploadsResp.status}`);
+    const data    = await uploadsResp.json();
+    allUploads    = data.uploads || [];
+    const r2Data  = r2Resp ? await r2Resp.json().catch(() => ({})) : {};
+    allR2Files    = r2Data.files || [];
 
     document.getElementById('d1-loading').classList.add('hidden');
 
@@ -1608,12 +1771,9 @@ async function autoLoadD1() {
     }
 
     document.getElementById('d1-no-uploads').classList.add('hidden');
-    renderUploadsPicker(allUploads);
+    renderUploadsPicker(allUploads, allR2Files);
     populateUploadSwitcher(allUploads);
     document.getElementById('d1-picker').classList.remove('hidden');
-
-    // Auto-load the most recent upload
-    loadUploadFromD1(allUploads[0].id, allUploads[0]);
   } catch(e) {
     document.getElementById('d1-loading').classList.add('hidden');
     document.getElementById('d1-error-msg').textContent = e.message;
@@ -1621,22 +1781,107 @@ async function autoLoadD1() {
   }
 }
 
-function renderUploadsPicker(uploads) {
+function renderUploadsPicker(uploads, r2Files) {
   const list = document.getElementById('d1-uploads-list');
-  list.innerHTML = uploads.map(u => {
-    const dt  = u.created_at ? new Date(u.created_at).toLocaleString('en-GB', { dateStyle:'medium', timeStyle:'short' }) : '—';
-    const file = u.csv_file || '—';
-    return `<div class="flex items-center gap-4 px-5 py-4 hover:bg-zinc-50 transition-colors">
-      <div class="flex-1 min-w-0">
-        <div class="text-sm font-medium text-zinc-800 mono truncate">${file}</div>
-        <div class="text-xs text-zinc-400 mt-0.5">${dt} &nbsp;·&nbsp; <span class="text-emerald-600">${(u.csv_rows||0).toLocaleString()} CSV rows</span>${u.html_items ? ` &nbsp;·&nbsp; <span class="text-sky-600">${u.html_items.toLocaleString()} HTML changes</span>` : ''}</div>
+  const latest     = uploads[0];
+  const latestDt   = latest.created_at ? new Date(latest.created_at).toLocaleString('en-GB', { dateStyle:'medium', timeStyle:'short' }) : '—';
+  const latestFile = latest.csv_file || latest.id.slice(0,8);
+
+  const csvOpts = uploads.map(u => {
+    const dt   = u.created_at ? new Date(u.created_at).toLocaleString('en-GB', { dateStyle:'short', timeStyle:'short' }) : '—';
+    const file = u.csv_file ? u.csv_file.replace(/\.csv$/i,'') : u.id.slice(0,8);
+    return `<option value="${u.id}" data-meta="${encodeURIComponent(JSON.stringify(u))}">${file} — ${dt}</option>`;
+  }).join('');
+
+  const htmlOpts = [
+    '<option value="">— No HTML report —</option>',
+    ...(r2Files || []).map(f =>
+      `<option value="${escAttr(f.key)}" data-name="${escAttr(f.name)}">${escHtml(f.name)} (${f.date})</option>`
+    ),
+  ].join('');
+
+  list.innerHTML = `
+    <div class="px-5 py-4">
+      <div class="text-xs text-zinc-400 uppercase tracking-wide font-semibold mb-2.5">Latest</div>
+      <div class="flex items-center gap-3 bg-zinc-50 rounded-xl px-4 py-3 border border-zinc-100">
+        <div class="flex-1 min-w-0">
+          <div class="text-sm font-medium text-zinc-800 mono truncate">${latestFile}</div>
+          <div class="text-xs text-zinc-400 mt-0.5">${latestDt} &nbsp;·&nbsp; <span class="text-emerald-600">${(latest.csv_rows||0).toLocaleString()} rows</span>${latest.html_items ? ` &nbsp;·&nbsp; <span class="text-sky-600">${latest.html_items.toLocaleString()} HTML</span>` : ''}</div>
+        </div>
+        <button onclick="loadUploadFromD1('${latest.id}', ${JSON.stringify(latest).replace(/'/g,"&#39;")})"
+          class="flex-shrink-0 text-xs font-semibold bg-zinc-900 text-white px-4 py-2 rounded-xl hover:bg-zinc-700 transition-colors">
+          Load Latest
+        </button>
       </div>
-      <button onclick="loadUploadFromD1('${u.id}', ${JSON.stringify(u).replace(/'/g,"&#39;")})"
-        class="flex-shrink-0 text-xs font-semibold bg-zinc-900 text-white px-3.5 py-2 rounded-xl hover:bg-zinc-700 transition-colors">
-        Load
+    </div>
+    <div class="px-5 pb-5 border-t border-zinc-100 pt-4">
+      <div class="text-xs text-zinc-400 uppercase tracking-wide font-semibold mb-3">Select &amp; Load</div>
+      <div class="grid grid-cols-2 gap-3 mb-3">
+        <div>
+          <label class="text-xs text-zinc-500 font-medium block mb-1.5">CSV Dataset</label>
+          <select id="picker-select" class="w-full text-xs mono text-zinc-700 border border-zinc-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-zinc-400 cursor-pointer">
+            ${csvOpts}
+          </select>
+        </div>
+        <div>
+          <label class="text-xs text-zinc-500 font-medium block mb-1.5">HTML Report</label>
+          <div class="flex gap-1.5">
+            <select id="picker-html-select" onchange="window._pickerLocalHTML=null;document.getElementById('picker-html-local-label').textContent=''"
+              class="flex-1 min-w-0 text-xs mono text-zinc-700 border border-zinc-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-zinc-400 cursor-pointer">
+              ${htmlOpts}
+            </select>
+            <button onclick="document.getElementById('picker-html-input').click()" title="Upload local HTML file"
+              class="flex-shrink-0 border border-zinc-200 rounded-lg px-2.5 py-2 text-zinc-400 hover:text-sky-600 hover:border-sky-300 hover:bg-sky-50 transition-colors bg-white">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+            </button>
+          </div>
+          <div id="picker-html-local-label" class="text-xs text-sky-600 mono mt-1 truncate h-4"></div>
+        </div>
+      </div>
+      <input type="file" id="picker-html-input" accept=".html" class="hidden" onchange="pickerHTMLFileSelected(this)">
+      <button onclick="loadPickerSelected()"
+        class="w-full text-sm font-semibold bg-zinc-900 text-white py-2.5 rounded-xl hover:bg-zinc-700 transition-colors mt-1">
+        Load Selected
       </button>
     </div>`;
-  }).join('');
+}
+
+function pickerHTMLFileSelected(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = evt => {
+    window._pickerLocalHTML = { text: evt.target.result, name: file.name, file };
+    const lbl = document.getElementById('picker-html-local-label');
+    if (lbl) lbl.textContent = file.name;
+    const sel = document.getElementById('picker-html-select');
+    if (sel) sel.value = '';
+  };
+  reader.readAsText(file, 'UTF-8');
+  input.value = '';
+}
+
+function loadPickerSelected() {
+  const csvSel = document.getElementById('picker-select');
+  const csvOpt = csvSel.options[csvSel.selectedIndex];
+  const uploadId = csvOpt.value;
+  const meta = JSON.parse(decodeURIComponent(csvOpt.dataset.meta));
+
+  const opts = {};
+  if (window._pickerLocalHTML) {
+    opts.htmlText = window._pickerLocalHTML.text;
+    opts.htmlName = window._pickerLocalHTML.name;
+    opts.htmlFile = window._pickerLocalHTML.file;
+    window._pickerLocalHTML = null;
+  } else {
+    const htmlSel = document.getElementById('picker-html-select');
+    const htmlOpt = htmlSel?.options[htmlSel.selectedIndex];
+    if (htmlOpt?.value) {
+      opts.htmlKey  = htmlOpt.value;
+      opts.htmlName = htmlOpt.dataset.name || htmlOpt.value.split('/').pop().replace(/^\d+-/, '');
+    }
+  }
+  loadUploadFromD1(uploadId, meta, opts);
 }
 
 function populateUploadSwitcher(uploads) {
@@ -1648,8 +1893,9 @@ function populateUploadSwitcher(uploads) {
   }).join('');
 }
 
-async function loadUploadFromD1(uploadId, uploadMeta) {
+async function loadUploadFromD1(uploadId, uploadMeta, opts = {}) {
   activeUploadId = uploadId;
+  const annotPromise = loadAnnotations(uploadId);
 
   // show loading overlay on picker
   document.getElementById('d1-loading-upload').classList.remove('hidden');
@@ -1687,32 +1933,41 @@ async function loadUploadFromD1(uploadId, uploadMeta) {
 
     allData = allRecs.map(d1RowToCSV);
 
-    // If this upload has an HTML file in R2, fetch and parse it
-    const r2Key = meta?.html_file || '';
-    if (r2Key) {
-      try {
-        document.getElementById('d1-loading-upload-sub').textContent = 'Loading HTML report from R2…';
-        const r2Resp = await fetch('/api/html-files/' + r2Key.split('/').map(encodeURIComponent).join('/'));
-        if (r2Resp.ok) {
-          const rawHTML = await r2Resp.text();
-          htmlData    = parseHTMLReport(rawHTML);
-          htmlLoaded  = htmlData.length > 0;
-          htmlFileName = r2Key.split('/').pop().replace(/^\d+-/, '');
-        }
-      } catch(e) {
-        console.warn('Failed to load HTML from R2:', e);
-      }
+    // HTML loading — priority: opts override > linked R2 key > D1 fallback
+    if (opts.htmlText) {
+      // local file passed directly from picker
+      htmlData     = parseHTMLReport(opts.htmlText);
+      htmlLoaded   = htmlData.length > 0;
+      htmlFileName = opts.htmlName || '';
+      if (opts.htmlFile) _uploadHTMLToR2(opts.htmlFile); // background R2 upload
     } else {
-      // Fallback: use html_changes from D1 if any were stored there
-      htmlData    = allChgs.map(d1HtmlToItem);
-      htmlLoaded  = htmlData.length > 0;
-      htmlFileName = '';
+      const r2Key = opts.htmlKey || meta?.html_file || '';
+      if (r2Key) {
+        try {
+          document.getElementById('d1-loading-upload-sub').textContent = 'Loading HTML report from R2…';
+          const r2Resp = await fetch('/api/html-files/' + r2Key.split('/').map(encodeURIComponent).join('/'));
+          if (r2Resp.ok) {
+            const rawHTML = await r2Resp.text();
+            htmlData     = parseHTMLReport(rawHTML);
+            htmlLoaded   = htmlData.length > 0;
+            htmlFileName = opts.htmlName || r2Key.split('/').pop().replace(/^\d+-/, '');
+          }
+        } catch(e) {
+          console.warn('Failed to load HTML from R2:', e);
+        }
+      } else {
+        // Fallback: use html_changes from D1 if any were stored there
+        htmlData     = allChgs.map(d1HtmlToItem);
+        htmlLoaded   = htmlData.length > 0;
+        htmlFileName = '';
+      }
     }
 
     // sync switcher to this upload
     const switcher = document.getElementById('upload-switcher');
     if (switcher) switcher.value = uploadId;
 
+    await annotPromise;
     processData();
     document.getElementById('d1-loading-upload').classList.add('hidden');
   } catch(e) {
@@ -1758,6 +2013,227 @@ function closeManagePanel() {
   setTimeout(() => { panel.classList.add('hidden'); overlay.classList.add('hidden'); }, 250);
 }
 
+// ── ADMIN PANEL ──
+function openAdminPanel() {
+  const overlay = document.getElementById('admin-overlay');
+  const panel   = document.getElementById('admin-panel');
+  overlay.classList.remove('hidden'); panel.classList.remove('hidden');
+  requestAnimationFrame(() => { panel.classList.add('open'); overlay.classList.add('open'); });
+  renderAdminStats();
+}
+
+function closeAdminPanel() {
+  const overlay = document.getElementById('admin-overlay');
+  const panel   = document.getElementById('admin-panel');
+  panel.classList.remove('open'); overlay.classList.remove('open');
+  setTimeout(() => { panel.classList.add('hidden'); overlay.classList.add('hidden'); }, 250);
+}
+
+function _adminBar(pct, color) {
+  return `<div class="flex-1 h-2 bg-zinc-100 rounded-full overflow-hidden"><div class="h-full ${color} rounded-full transition-all" style="width:${Math.min(+pct||0,100)}%"></div></div>`;
+}
+
+function _adminCountByLLMAndAnnot(llmCat, annotSet) {
+  let n = 0;
+  for (const item of htmlData) {
+    const annot = _annotations[annotKey(item)];
+    if (!annot || !annotSet.has(annot)) continue;
+    const match = urlToCSVRows[normalizeURL(item.url)];
+    if (!match) continue;
+    const isApproved = match.approved.length > 0;
+    const isRejected = match.rejected.length > 0 && !isApproved;
+    if (llmCat === 'approved' && isApproved) n++;
+    else if (llmCat === 'rejected' && isRejected) n++;
+  }
+  return n;
+}
+
+function renderAdminStats() {
+  const el = document.getElementById('admin-stats');
+  if (!activeUploadId || !allData.length) {
+    el.innerHTML = '<p class="text-sm text-zinc-400 text-center py-16">No dataset loaded.</p>';
+    return;
+  }
+
+  const IS_PROJECT  = new Set(['Need to Create', 'Need to Update']);
+  const NOT_PROJECT = new Set(['Not a project', 'Other sector', 'Already exists', 'Duplicate Link']);
+
+  const totalCSV  = allData.length;
+  const totalHTML = htmlData.length;
+  const nApproved = approved.length;
+  const nRejected = rejected.length;
+  const nFailed   = failed.length;
+  const pct = (n, d) => d ? (n / d * 100).toFixed(1) : '0.0';
+
+  // CSV → HTML coverage
+  const htmlURLSet = new Set(htmlData.map(i => normalizeURL(i.url)).filter(Boolean));
+  let csvMatchedHTML = 0;
+  for (const row of allData) {
+    const url = normalizeURL(row['Link'] || row['Web Page'] || '');
+    if (url && htmlURLSet.has(url)) csvMatchedHTML++;
+  }
+
+  // HTML → CSV coverage
+  let htmlMatchedCSV = 0;
+  for (const item of htmlData) {
+    const match = urlToCSVRows[normalizeURL(item.url)];
+    if (match && (match.approved.length + match.rejected.length + match.failed.length) > 0) htmlMatchedCSV++;
+  }
+
+  // Annotation counts + accuracy
+  const annotCounts = {};
+  ANNOTATION_OPTIONS.forEach(o => { annotCounts[o] = 0; });
+  let totalAnnotated = 0, llmCorrect = 0, llmWrong = 0;
+  const countedKeys = new Set();
+
+  for (const item of htmlData) {
+    const key = annotKey(item);
+    const ann = _annotations[key];
+    if (!ann) continue;
+    totalAnnotated++;
+    annotCounts[ann] = (annotCounts[ann] || 0) + 1;
+    countedKeys.add(key);
+
+    const match = urlToCSVRows[normalizeURL(item.url)];
+    if (match) {
+      const llmApproved = match.approved.length > 0;
+      const llmRejected = match.rejected.length > 0 && !llmApproved;
+      if      (llmApproved && IS_PROJECT.has(ann))  llmCorrect++;
+      else if (llmApproved && NOT_PROJECT.has(ann)) llmWrong++;
+      else if (llmRejected && NOT_PROJECT.has(ann)) llmCorrect++;
+      else if (llmRejected && IS_PROJECT.has(ann))  llmWrong++;
+    }
+  }
+  // also count annotations set via CSV table rows (no HTML counterpart)
+  for (const row of allData) {
+    const key = rowAnnotKey(row);
+    if (!key || countedKeys.has(key)) continue;
+    const ann = _annotations[key];
+    if (!ann) continue;
+    totalAnnotated++;
+    annotCounts[ann] = (annotCounts[ann] || 0) + 1;
+  }
+
+  const accuracyBase = llmCorrect + llmWrong;
+  const llmAccuracy  = accuracyBase ? (llmCorrect / accuracyBase * 100).toFixed(1) : null;
+  const htmlAnnotPct = pct(totalAnnotated, totalHTML || 1);
+
+  const meta  = allUploads.find(u => u.id === activeUploadId) || {};
+  const dt    = meta.created_at ? new Date(meta.created_at).toLocaleString('en-GB', { dateStyle:'medium', timeStyle:'short' }) : '—';
+  const fname = meta.csv_file  || activeUploadId.slice(0, 14) + '…';
+
+  el.innerHTML = `
+    <!-- File Overview -->
+    <section class="mb-7">
+      <div class="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-3">File Overview</div>
+      <div class="bg-zinc-50 border border-zinc-100 rounded-xl divide-y divide-zinc-100">
+        <div class="flex items-center justify-between px-4 py-2.5 text-xs"><span class="text-zinc-400">File</span><span class="mono font-semibold text-zinc-800 truncate max-w-xs ml-4">${escHtml(fname)}</span></div>
+        <div class="flex items-center justify-between px-4 py-2.5 text-xs"><span class="text-zinc-400">Uploaded</span><span class="mono text-zinc-600">${dt}</span></div>
+        <div class="flex items-center justify-between px-4 py-2.5 text-xs"><span class="text-zinc-400">Upload ID</span><span class="mono text-zinc-300 text-xs">${activeUploadId}</span></div>
+        <div class="flex items-center justify-between px-4 py-2.5 text-xs"><span class="text-zinc-400">Total Records</span><span class="mono font-semibold text-zinc-700">${totalCSV.toLocaleString()} CSV &nbsp;·&nbsp; ${totalHTML.toLocaleString()} HTML changes</span></div>
+      </div>
+    </section>
+
+    <!-- Coverage -->
+    <section class="mb-7">
+      <div class="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-3">Data Coverage</div>
+      <div class="grid grid-cols-2 gap-3 mb-3">
+        <div class="bg-white border border-zinc-200 rounded-xl p-4">
+          <div class="text-xs text-zinc-400 mb-1">CSV → HTML matched</div>
+          <div class="text-2xl font-bold mono text-zinc-900 mb-2">${csvMatchedHTML.toLocaleString()} <span class="text-sm text-zinc-400 font-normal">/ ${totalCSV.toLocaleString()}</span></div>
+          <div class="flex items-center gap-2">${_adminBar(pct(csvMatchedHTML,totalCSV), 'bg-emerald-500')}<span class="mono text-xs font-bold text-emerald-600 w-12 text-right">${pct(csvMatchedHTML,totalCSV)}%</span></div>
+          <div class="text-xs text-zinc-300 mt-1.5">${(totalCSV-csvMatchedHTML).toLocaleString()} unmatched</div>
+        </div>
+        <div class="bg-white border border-zinc-200 rounded-xl p-4">
+          <div class="text-xs text-zinc-400 mb-1">HTML → CSV matched</div>
+          <div class="text-2xl font-bold mono text-zinc-900 mb-2">${htmlMatchedCSV.toLocaleString()} <span class="text-sm text-zinc-400 font-normal">/ ${totalHTML.toLocaleString()}</span></div>
+          <div class="flex items-center gap-2">${_adminBar(pct(htmlMatchedCSV,totalHTML), 'bg-sky-500')}<span class="mono text-xs font-bold text-sky-600 w-12 text-right">${pct(htmlMatchedCSV,totalHTML)}%</span></div>
+          <div class="text-xs text-zinc-300 mt-1.5">${(totalHTML-htmlMatchedCSV).toLocaleString()} unmatched</div>
+        </div>
+      </div>
+      ${(totalCSV && totalHTML) ? `<div class="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+        <span class="font-semibold">${(totalCSV-csvMatchedHTML).toLocaleString()}</span> CSV records have no HTML change &nbsp;·&nbsp;
+        <span class="font-semibold">${(totalHTML-htmlMatchedCSV).toLocaleString()}</span> HTML changes have no CSV record
+      </div>` : ''}
+    </section>
+
+    <!-- LLM Classification -->
+    <section class="mb-7">
+      <div class="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-3">LLM Classification</div>
+      <div class="bg-white border border-zinc-200 rounded-xl p-4 space-y-3">
+        ${[['Approved',nApproved,'bg-emerald-500','text-emerald-600'],['Rejected',nRejected,'bg-amber-400','text-amber-600'],['Failed',nFailed,'bg-red-400','text-red-500']].map(([label,n,bar,text]) => `
+        <div class="flex items-center gap-3">
+          <span class="text-xs text-zinc-500 w-16 flex-shrink-0">${label}</span>
+          ${_adminBar(pct(n,totalCSV), bar)}
+          <span class="mono text-xs w-28 text-right flex-shrink-0"><span class="font-semibold text-zinc-700">${n.toLocaleString()}</span> <span class="text-zinc-400">(${pct(n,totalCSV)}%)</span></span>
+        </div>`).join('')}
+      </div>
+    </section>
+
+    <!-- Annotation Progress -->
+    <section class="mb-7">
+      <div class="flex items-center justify-between mb-3">
+        <div class="text-xs font-bold text-zinc-400 uppercase tracking-widest">Annotation Progress</div>
+        <span class="mono text-xs text-zinc-500 bg-zinc-100 px-2 py-0.5 rounded-full">${totalAnnotated.toLocaleString()} / ${totalHTML.toLocaleString()} &nbsp;(${htmlAnnotPct}%)</span>
+      </div>
+      <div class="flex items-center gap-3 mb-4">
+        ${_adminBar(htmlAnnotPct, 'bg-violet-500')}
+        <span class="mono text-xs font-bold text-violet-600 w-12 text-right">${htmlAnnotPct}%</span>
+      </div>
+      <div class="space-y-2">
+        ${ANNOTATION_OPTIONS.map(o => {
+          const n = annotCounts[o] || 0;
+          if (!n && totalAnnotated) return '';
+          const p = pct(n, totalAnnotated);
+          return `<div class="flex items-center gap-2 text-xs">
+            <span class="text-zinc-500 w-32 flex-shrink-0">${o}</span>
+            <div class="flex-1 h-1.5 bg-zinc-100 rounded-full overflow-hidden"><div class="h-full bg-violet-400 rounded-full" style="width:${p}%"></div></div>
+            <span class="mono text-zinc-600 w-20 text-right flex-shrink-0"><span class="font-medium">${n}</span> <span class="text-zinc-300">(${p}%)</span></span>
+          </div>`;
+        }).join('')}
+        ${!totalAnnotated ? '<p class="text-xs text-zinc-300 italic py-2">No annotations recorded yet.</p>' : ''}
+      </div>
+    </section>
+
+    <!-- LLM Accuracy -->
+    <section class="mb-4">
+      <div class="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-3">LLM Accuracy
+        <span class="font-normal text-zinc-300 normal-case tracking-normal ml-1">— based on user annotations</span>
+      </div>
+      ${!accuracyBase ? `<div class="bg-zinc-50 border border-zinc-100 rounded-xl px-4 py-8 text-center">
+        <p class="text-xs text-zinc-400">Annotate records to calculate LLM accuracy.</p>
+        <p class="text-xs text-zinc-300 mt-1">Need at least one "Need to Create / Update" or "Not a project / Other" annotation on a matched record.</p>
+      </div>` : `
+      <div class="grid grid-cols-3 gap-3 mb-5">
+        <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
+          <div class="text-3xl font-bold text-emerald-600 mono">${llmAccuracy}%</div>
+          <div class="text-xs text-emerald-600 mt-1 font-medium">Overall Accuracy</div>
+          <div class="text-xs text-emerald-400 mt-0.5">${accuracyBase} annotated</div>
+        </div>
+        <div class="bg-white border border-zinc-200 rounded-xl p-4 text-center">
+          <div class="text-3xl font-bold text-zinc-900 mono">${llmCorrect}</div>
+          <div class="text-xs text-zinc-500 mt-1">Correct calls</div>
+        </div>
+        <div class="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
+          <div class="text-3xl font-bold text-red-500 mono">${llmWrong}</div>
+          <div class="text-xs text-red-400 mt-1">Wrong calls</div>
+        </div>
+      </div>
+      <div class="bg-white border border-zinc-200 rounded-xl divide-y divide-zinc-100 text-xs">
+        ${[
+          ['Approved → confirmed project ✓', _adminCountByLLMAndAnnot('approved', IS_PROJECT), 'text-emerald-600'],
+          ['Approved → not a project ✗',    _adminCountByLLMAndAnnot('approved', NOT_PROJECT), 'text-red-500'],
+          ['Rejected → confirmed non-project ✓', _adminCountByLLMAndAnnot('rejected', NOT_PROJECT), 'text-emerald-600'],
+          ['Rejected → missed project ✗',   _adminCountByLLMAndAnnot('rejected', IS_PROJECT), 'text-red-500'],
+        ].map(([label, n, cls]) => `<div class="flex items-center justify-between px-4 py-2.5">
+          <span class="text-zinc-500">${label}</span>
+          <span class="mono font-semibold ${cls}">${n}</span>
+        </div>`).join('')}
+      </div>`}
+    </section>
+  `;
+}
+
 async function loadManageList() {
   const list = document.getElementById('manage-list');
   const loadingEl = document.getElementById('manage-loading');
@@ -1783,10 +2259,16 @@ async function loadManageList() {
             <span class="text-xs font-medium text-zinc-700 mono">${u.csv_file || u.id.slice(0,8)}</span>
             <div class="text-xs text-zinc-400 mt-0.5">${dt} &nbsp;·&nbsp; ${(u.csv_rows||0).toLocaleString()} rows &nbsp;·&nbsp; ${(u.html_items||0).toLocaleString()} HTML</div>
           </div>
-          <button onclick="deleteUpload('${u.id}', this)" ${isActive ? 'disabled title="Cannot delete active dataset"' : ''}
-            class="flex-shrink-0 text-xs text-red-500 hover:text-red-700 border border-red-200 hover:border-red-300 rounded-lg px-2.5 py-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed bg-white">
-            Delete All
-          </button>
+          <div class="flex gap-1.5 flex-shrink-0">
+            <button onclick="deleteCSVRecords('${u.id}', this)" ${isActive ? 'disabled title="Cannot delete active dataset"' : ''}
+              class="text-xs text-amber-600 hover:text-amber-800 border border-amber-200 hover:border-amber-300 rounded-lg px-2.5 py-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed bg-white">
+              Del CSV
+            </button>
+            <button onclick="deleteUpload('${u.id}', this)" ${isActive ? 'disabled title="Cannot delete active dataset"' : ''}
+              class="text-xs text-red-500 hover:text-red-700 border border-red-200 hover:border-red-300 rounded-lg px-2.5 py-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed bg-white">
+              Del All
+            </button>
+          </div>
         </div>
         ${htmlKey ? `<div class="flex items-center gap-2 mt-2 pt-2 border-t border-zinc-50">
           <svg class="w-3 h-3 text-sky-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"/></svg>
@@ -1804,6 +2286,24 @@ async function loadManageList() {
   }
 }
 
+async function deleteCSVRecords(uploadId, btn) {
+  if (!confirm('Delete CSV records for this dataset? The upload entry and linked HTML file will be kept.')) return;
+  btn.disabled = true;
+  btn.textContent = 'Deleting…';
+  try {
+    const resp = await fetch(`/api/uploads/${uploadId}/csv`, { method: 'DELETE' });
+    const data = await resp.json();
+    if (!data.ok) throw new Error(data.error || 'Delete failed');
+    allUploads = allUploads.map(u => u.id === uploadId ? { ...u, csv_rows: 0 } : u);
+    populateUploadSwitcher(allUploads);
+    loadManageList();
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = 'Del CSV';
+    alert('Delete failed: ' + e.message);
+  }
+}
+
 async function deleteUpload(uploadId, btn) {
   if (!confirm('Permanently delete this dataset from D1? This cannot be undone.')) return;
   btn.disabled = true;
@@ -1818,7 +2318,7 @@ async function deleteUpload(uploadId, btn) {
     loadManageList();
   } catch(e) {
     btn.disabled = false;
-    btn.textContent = 'Delete';
+    btn.textContent = 'Del All';
     alert('Delete failed: ' + e.message);
   }
 }
@@ -1978,7 +2478,8 @@ async function deleteR2File(key, btn, uploadId = '') {
   }
 }
 
-function escAttr(s) { return s.replace(/'/g, "\\'").replace(/"/g, '&quot;'); }
+function escAttr(s) { return String(s).replace(/'/g, "\\'").replace(/"/g, '&quot;'); }
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 // Drag-and-drop HTML file onto the html-groups area
 function initHTMLDropZone() {
@@ -2047,12 +2548,19 @@ function parseHTMLReport(htmlText) {
 function renderHTMLChanges() {
   const q      = (document.getElementById('html-search').value || '').toLowerCase();
   const folder = document.getElementById('html-folder-filter').value;
+  const annot  = (document.getElementById('html-annotation-filter')?.value || '');
 
   let items = htmlData;
   if (folder) items = items.filter(d => d.groupKey === folder);
   if (q) items = items.filter(d =>
     (d.title + ' ' + d.url + ' ' + d.changeSummary + ' ' + d.changesFullText + ' ' + d.groupKey).toLowerCase().includes(q)
   );
+  if (annot) {
+    items = items.filter(d => {
+      const a = _annotations[annotKey(d)] || '';
+      return annot === '__none__' ? !a : a === annot;
+    });
+  }
 
   window._htmlFiltered = items;
   const countEl = document.getElementById('html-count');
@@ -2130,7 +2638,17 @@ function renderHTMLChanges() {
           <!-- Actual HTML changes — links, ins/del, formatted content -->
           ${item.changesFullHTML ? `<div class="changes-viewer border border-zinc-200 rounded-xl p-3 text-xs leading-relaxed overflow-y-auto bg-zinc-50" style="max-height:180px" onclick="event.stopPropagation()">${item.changesFullHTML}</div>` : ''}
           <!-- Date -->
-          <div class="mt-3 mono text-xs text-zinc-300">${item.date || ''}</div>
+          <div class="mt-2 mono text-xs text-zinc-300">${item.date || ''}</div>
+          <!-- Annotation -->
+          <div class="mt-2 pt-2 border-t border-zinc-100" onclick="event.stopPropagation()">
+            <select class="w-full text-xs border border-zinc-200 rounded-lg px-2.5 py-1.5 bg-white text-zinc-600 focus:outline-none focus:border-zinc-400 cursor-pointer"
+              data-annot-key="${encodeURIComponent(annotKey(item))}"
+              onchange="saveAnnotation(this)"
+              onclick="event.stopPropagation()">
+              <option value="">— Annotate —</option>
+              ${ANNOTATION_OPTIONS.map(o => `<option value="${o}" ${_annotations[annotKey(item)]===o?'selected':''}>${o}</option>`).join('')}
+            </select>
+          </div>
         </div>
       </div>`;
     }).join('');
