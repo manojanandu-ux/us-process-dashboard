@@ -259,21 +259,30 @@
       <!-- LLM classification stats for HTML-monitored pages -->
       <div class="grid grid-cols-3 gap-3 mb-6">
         <div class="bg-white border border-emerald-200 rounded-xl p-4">
-          <div class="text-2xl font-bold text-emerald-600 mono" id="hc-approved">0</div>
+          <div class="flex items-baseline gap-1.5">
+            <div class="text-2xl font-bold text-emerald-600 mono" id="hc-approved">0</div>
+            <div class="text-xs text-zinc-300 mono" id="hc-approved-of"></div>
+          </div>
           <div class="text-xs text-zinc-500 mt-0.5">LLM Approved</div>
-          <div class="text-xs text-zinc-300 mt-0.5">from monitored pages</div>
+          <div class="text-xs text-zinc-300 mt-0.5">on monitored pages</div>
           <div class="mt-2 h-0.5 bg-emerald-100 rounded-full overflow-hidden"><div id="hcbar-approved" class="h-full bg-emerald-500 rounded-full transition-all duration-700" style="width:0%"></div></div>
         </div>
         <div class="bg-white border border-amber-200 rounded-xl p-4">
-          <div class="text-2xl font-bold text-amber-500 mono" id="hc-rejected">0</div>
+          <div class="flex items-baseline gap-1.5">
+            <div class="text-2xl font-bold text-amber-500 mono" id="hc-rejected">0</div>
+            <div class="text-xs text-zinc-300 mono" id="hc-rejected-of"></div>
+          </div>
           <div class="text-xs text-zinc-500 mt-0.5">LLM Rejected</div>
-          <div class="text-xs text-zinc-300 mt-0.5">from monitored pages</div>
+          <div class="text-xs text-zinc-300 mt-0.5">on monitored pages</div>
           <div class="mt-2 h-0.5 bg-amber-100 rounded-full overflow-hidden"><div id="hcbar-rejected" class="h-full bg-amber-400 rounded-full transition-all duration-700" style="width:0%"></div></div>
         </div>
         <div class="bg-white border border-red-200 rounded-xl p-4">
-          <div class="text-2xl font-bold text-red-500 mono" id="hc-failed">0</div>
+          <div class="flex items-baseline gap-1.5">
+            <div class="text-2xl font-bold text-red-500 mono" id="hc-failed">0</div>
+            <div class="text-xs text-zinc-300 mono" id="hc-failed-of"></div>
+          </div>
           <div class="text-xs text-zinc-500 mt-0.5">Failed Extraction</div>
-          <div class="text-xs text-zinc-300 mt-0.5">from monitored pages</div>
+          <div class="text-xs text-zinc-300 mt-0.5">on monitored pages</div>
           <div class="mt-2 h-0.5 bg-red-100 rounded-full overflow-hidden"><div id="hcbar-failed" class="h-full bg-red-400 rounded-full transition-all duration-700" style="width:0%"></div></div>
         </div>
       </div>
@@ -1595,24 +1604,35 @@ function updateHTMLChangesStat() {
 }
 
 function updateHTMLClassStats() {
-  let totAp = 0, totRj = 0, totFa = 0;
-  const seen = new Set();
+  // Build set of unique URLs that appear in the HTML report
+  const monitoredURLs = new Set();
   for (const item of htmlData) {
     const key = normalizeURL(item.url);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    const m = urlToCSVRows[key];
-    if (!m) continue;
-    // Count the HTML item in one category — approved wins, then rejected, then failed
-    if (m.approved.length > 0) totAp++;
-    else if (m.rejected.length > 0) totRj++;
-    else totFa++;
+    if (key) monitoredURLs.add(key);
   }
+
+  // Count each CSV row exactly once, only if it belongs to a monitored page
+  let totAp = 0, totRj = 0, totFa = 0;
+  for (const row of allData) {
+    const wp = normalizeURL(row['Web Page']);
+    const lk = normalizeURL(row['Link'] || '');
+    const isMonitored = (wp && monitoredURLs.has(wp)) || (lk && monitoredURLs.has(lk));
+    if (!isMonitored) continue;
+    const status = (row['Processing_Status'] || '').trim();
+    const isProj  = (row['Is_Project'] || '').trim();
+    if (status === 'Failed') totFa++;
+    else if (isProj === 'True') totAp++;
+    else totRj++;
+  }
+
   const tot = totAp + totRj + totFa || 1;
   const el = id => document.getElementById(id);
-  el('hc-approved').textContent = totAp.toLocaleString();
-  el('hc-rejected').textContent = totRj.toLocaleString();
-  el('hc-failed').textContent   = totFa.toLocaleString();
+  el('hc-approved').textContent    = totAp.toLocaleString();
+  el('hc-rejected').textContent    = totRj.toLocaleString();
+  el('hc-failed').textContent      = totFa.toLocaleString();
+  el('hc-approved-of').textContent = `/ ${approved.length.toLocaleString()}`;
+  el('hc-rejected-of').textContent = `/ ${rejected.length.toLocaleString()}`;
+  el('hc-failed-of').textContent   = `/ ${failed.length.toLocaleString()}`;
   el('hcbar-approved').style.width = (totAp/tot*100).toFixed(1) + '%';
   el('hcbar-rejected').style.width = (totRj/tot*100).toFixed(1) + '%';
   el('hcbar-failed').style.width   = (totFa/tot*100).toFixed(1) + '%';
