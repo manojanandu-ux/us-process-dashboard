@@ -2115,16 +2115,15 @@ function _adminBar(pct, color) {
 }
 
 function _adminCountByLLMAndAnnot(llmCat, annotSet) {
+  const arr  = llmCat === 'approved' ? approved : rejected;
+  const seen = new Set();
   let n = 0;
-  for (const item of htmlData) {
-    const annot = _annotations[annotKey(item)];
-    if (!annot || !annotSet.has(annot)) continue;
-    const match = urlToCSVRows[normalizeURL(item.url)];
-    if (!match) continue;
-    const isApproved = match.approved.length > 0;
-    const isRejected = match.rejected.length > 0 && !isApproved;
-    if (llmCat === 'approved' && isApproved) n++;
-    else if (llmCat === 'rejected' && isRejected) n++;
+  for (const row of arr) {
+    const key = rowAnnotKey(row);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    const annot = _annotations[key];
+    if (annot && annotSet.has(annot)) n++;
   }
   return n;
 }
