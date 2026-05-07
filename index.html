@@ -245,7 +245,7 @@
         <svg class="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
         <input type="text" id="search-input" placeholder="Search projects, agencies, locations…"
           class="w-full pl-9 pr-4 py-2 text-sm border border-zinc-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-zinc-100 focus:border-zinc-400 transition-all placeholder-zinc-300"
-          oninput="debouncedApplyFilters()">
+          oninput="applyFilters()">
       </div>
       <select id="state-filter" class="px-3 py-2 text-sm border border-zinc-200 rounded-lg bg-white focus:outline-none text-zinc-600 cursor-pointer" onchange="applyFilters()">
         <option value="">All States</option>
@@ -339,7 +339,7 @@
             </svg>
             <input type="text" id="html-search" placeholder="Search changes, URLs, summaries…"
               class="w-full pl-9 pr-4 py-2 text-sm border border-zinc-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-zinc-100 focus:border-zinc-400 transition-all placeholder-zinc-300"
-              oninput="debouncedRenderHTMLChanges()">
+              oninput="renderHTMLChanges()">
           </div>
           <select id="html-folder-filter" class="px-3 py-2 text-sm border border-zinc-200 rounded-lg bg-white focus:outline-none text-zinc-600 cursor-pointer" onchange="renderHTMLChanges()">
             <option value="">All States</option>
@@ -552,10 +552,6 @@ let allR2Files = [];   // list from /api/html-files
 let currentDate = '';  // currently loaded processed_date
 let _annotations = {};
 let _annotSaveTimer = null;
-let _dirtyTabs = new Set(['approved','rejected','failed']);
-let _mapDataDirty = true;
-let _searchTimer = null;
-let _htmlSearchTimer = null;
 const ANNOTATION_OPTIONS = ['Need to Create','Already exists','Not a project','Other sector','Duplicate Link','Need to Update','Not Under Client Scope'];
 const REASON_OPTIONS     = ['Bid result','Civil','Public art project','Material purchase projects','Other Reason','SMS'];
 
@@ -627,7 +623,6 @@ function processData() {
   document.getElementById('bar-failed').style.width   = pct(failed.length);
 
   buildURLIndex();
-  _mapDataDirty = true;
   updateHTMLClassStats();
   populateFilters();
   renderAll();
@@ -640,7 +635,6 @@ function processData() {
   initMap();
   renderMapStateTable();
   updateMapSummary();
-  _mapDataDirty = false;
   // Populate HTML folder filter (needed for auto-load path where loadHTMLFile isn't called)
   (function() {
     const folders = [...new Set(htmlData.map(d => d.groupKey))].sort();
@@ -724,25 +718,13 @@ function sortTable(tab, col) {
     return s.dir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
   });
   pages[tab] = 1;
-  _dirtyTabs.add(tab);
-  _renderVisibleTab();
-  updateCount();
+  renderAll();
 }
 
 // ── RENDER ──
 function renderAll() {
-  _dirtyTabs.add('approved'); _dirtyTabs.add('rejected'); _dirtyTabs.add('failed');
-  _renderVisibleTab();
+  renderApproved(); renderRejected(); renderFailed();
   updateCount();
-}
-
-function _renderVisibleTab() {
-  if (currentTab === 'htmlmap') return;
-  if (!_dirtyTabs.has(currentTab)) return;
-  if      (currentTab === 'approved') renderApproved();
-  else if (currentTab === 'rejected') renderRejected();
-  else if (currentTab === 'failed')   renderFailed();
-  _dirtyTabs.delete(currentTab);
 }
 
 function updateCount() {
@@ -798,26 +780,11 @@ function paginate(tab) {
   const paginationEl = document.getElementById(tab + '-pagination');
   if (totalPages <= 1) { paginationEl.innerHTML = ''; return slice; }
 
-  const delta = 2;
-  const rangeStart = Math.max(1, page - delta);
-  const rangeEnd   = Math.min(totalPages, page + delta);
-  const pageNums = [];
-  if (rangeStart > 1) { pageNums.push(1); if (rangeStart > 2) pageNums.push('…'); }
-  for (let i = rangeStart; i <= rangeEnd; i++) pageNums.push(i);
-  if (rangeEnd < totalPages) { if (rangeEnd < totalPages - 1) pageNums.push('…'); pageNums.push(totalPages); }
-
-  const pageButtons = pageNums.map(p =>
-    p === '…'
-      ? `<span class="px-1 text-xs text-zinc-300 select-none">…</span>`
-      : `<button onclick="goPage('${tab}',${p})" class="min-w-[28px] px-1.5 py-1 text-xs border rounded-lg transition-colors ${p===page ? 'bg-zinc-900 text-white border-zinc-900 font-semibold' : 'border-zinc-200 text-zinc-600 hover:border-zinc-400 bg-white'}">${p}</button>`
-  ).join('');
-
   paginationEl.innerHTML = `
-    <span class="text-xs text-zinc-400 mono">${total.toLocaleString()} records &nbsp;·&nbsp; page ${page}/${totalPages}</span>
-    <div class="flex items-center gap-1 flex-wrap">
-      <button onclick="goPage('${tab}',${page-1})" ${page<=1?'disabled':''} class="px-2 py-1 text-xs border border-zinc-200 rounded-lg text-zinc-600 hover:border-zinc-300 disabled:opacity-30 disabled:cursor-not-allowed bg-white">←</button>
-      ${pageButtons}
-      <button onclick="goPage('${tab}',${page+1})" ${page>=totalPages?'disabled':''} class="px-2 py-1 text-xs border border-zinc-200 rounded-lg text-zinc-600 hover:border-zinc-300 disabled:opacity-30 disabled:cursor-not-allowed bg-white">→</button>
+    <span class="text-xs text-zinc-400 mono">Page ${page} of ${totalPages} &nbsp;·&nbsp; ${total.toLocaleString()} records</span>
+    <div class="flex items-center gap-1">
+      <button onclick="goPage('${tab}',${page-1})" ${page<=1?'disabled':''} class="px-3 py-1 text-xs border border-zinc-200 rounded-lg text-zinc-600 hover:border-zinc-300 disabled:opacity-30 disabled:cursor-not-allowed bg-white">← Prev</button>
+      <button onclick="goPage('${tab}',${page+1})" ${page>=totalPages?'disabled':''} class="px-3 py-1 text-xs border border-zinc-200 rounded-lg text-zinc-600 hover:border-zinc-300 disabled:opacity-30 disabled:cursor-not-allowed bg-white">Next →</button>
     </div>`;
   return slice;
 }
@@ -825,9 +792,7 @@ function paginate(tab) {
 function goPage(tab, p) {
   const max = Math.ceil(filtered[tab].length / PAGE_SIZE);
   pages[tab] = Math.max(1, Math.min(p, max));
-  _dirtyTabs.add(tab);
-  _renderVisibleTab();
-  updateCount();
+  renderAll();
   document.getElementById('tab-'+tab).scrollIntoView({ behavior:'smooth', block:'start' });
 }
 
@@ -1214,13 +1179,7 @@ function switchTab(tab) {
   document.getElementById('tab-'+tab).classList.remove('hidden');
   document.querySelectorAll('.approved-only').forEach(el => el.classList.toggle('hidden', tab!=='approved'));
   document.getElementById('filter-bar').classList.toggle('hidden', tab==='htmlmap');
-  if (tab === 'htmlmap') {
-    if (_mapDataDirty) { aggregateByState(); renderMapStateTable(); updateMapSummary(); _mapDataDirty = false; }
-    initMap();
-    renderHTMLChanges();
-  } else {
-    _renderVisibleTab();
-  }
+  if (tab === 'htmlmap') { aggregateByState(); initMap(); renderMapStateTable(); updateMapSummary(); renderHTMLChanges(); }
   updateCount();
 }
 
@@ -1296,15 +1255,6 @@ function reasonCell(row) {
       ${REASON_OPTIONS.map(o => `<option value="${o}" ${cur===o?'selected':''}>${o}</option>`).join('')}
     </select>
   </td>`;
-}
-
-function debouncedApplyFilters() {
-  clearTimeout(_searchTimer);
-  _searchTimer = setTimeout(applyFilters, 250);
-}
-function debouncedRenderHTMLChanges() {
-  clearTimeout(_htmlSearchTimer);
-  _htmlSearchTimer = setTimeout(renderHTMLChanges, 250);
 }
 
 // ── EXPORT ──
@@ -2559,7 +2509,6 @@ function loadHTMLText(rawHTML, name) {
   buildURLIndex();
   updateHTMLClassStats();
   aggregateByState();
-  _mapDataDirty = false;
   if (mapRendered) { renderMap(); renderMapStateTable(); }
 }
 
@@ -2763,13 +2712,11 @@ function renderHTMLChanges() {
     return;
   }
 
-  const itemIndexMap = new Map(items.map((it, i) => [it, i]));
-
   container.innerHTML = sortedGroups.map(([groupKey, groupItems]) => {
     const fullName = ABBR_TO_NAME[groupKey] ? groupKey + ' — ' + ABBR_TO_NAME[groupKey] : groupKey;
 
     const cards = groupItems.map(item => {
-      const globalIdx   = itemIndexMap.get(item);
+      const globalIdx   = items.indexOf(item);
       const csvMatch    = urlToCSVRows[normalizeURL(item.url)];
       const hasApproved = csvMatch && csvMatch.approved.length > 0;
       const hasRejected = csvMatch && csvMatch.rejected.length > 0;
