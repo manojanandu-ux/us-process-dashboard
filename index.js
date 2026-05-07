@@ -78,7 +78,22 @@ export default {
           COUNT(CASE WHEN r.extraction_status != 'Success'
                       AND r.extraction_status != '' THEN 1 END)               AS extraction_failed,
           COUNT(CASE WHEN r.has_plans_specs = 'Yes'
-                       OR r.has_bidding_docs = 'Yes' THEN 1 END)              AS pdf_docs_found
+                       OR r.has_bidding_docs = 'Yes' THEN 1 END)              AS pdf_docs_found,
+          COUNT(CASE WHEN r.is_project = 'True' THEN 1 END)                   AS approved_count,
+          (SELECT hc.group_key || ':' || COUNT(*)
+           FROM html_changes hc
+           WHERE hc.upload_id IN (
+             SELECT id FROM uploads WHERE processed_date = u.processed_date
+           ) AND hc.group_key != ''
+           GROUP BY hc.group_key
+           ORDER BY COUNT(*) DESC LIMIT 1) AS top_html_group,
+          (SELECT r2.state || ':' || COUNT(*)
+           FROM csv_records r2
+           WHERE r2.upload_id IN (
+             SELECT id FROM uploads WHERE processed_date = u.processed_date
+           ) AND r2.state != ''
+           GROUP BY r2.state
+           ORDER BY COUNT(*) DESC LIMIT 1) AS top_csv_state
         FROM uploads u
         LEFT JOIN csv_records r ON r.upload_id = u.id
         WHERE u.processed_date IS NOT NULL AND u.processed_date != ''

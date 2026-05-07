@@ -65,7 +65,7 @@
   <div id="d1-loading" class="text-center">
     <div class="w-10 h-10 border-2 border-zinc-200 border-t-zinc-900 rounded-full animate-spin mb-5 mx-auto"></div>
     <div class="text-zinc-700 text-sm font-semibold">Connecting to D1…</div>
-    <div class="mono text-xs text-zinc-400 mt-1">Blackridge Intelligence</div>
+    <div class="mono text-xs text-zinc-400 mt-1">US Projects Dashboard</div>
   </div>
 
   <!-- Loading into dashboard spinner -->
@@ -76,7 +76,7 @@
   </div>
 
   <!-- Upload picker -->
-  <div id="d1-picker" class="hidden w-full max-w-2xl">
+  <div id="d1-picker" class="hidden w-full max-w-3xl">
     <div class="text-center mb-8">
       <div class="w-10 h-10 bg-zinc-900 rounded-xl flex items-center justify-center mx-auto mb-4">
         <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -84,18 +84,21 @@
         </svg>
       </div>
       <div class="font-bold text-zinc-900 text-xl mb-1">US Projects Dashboard</div>
-      <div class="mono text-xs text-zinc-400">Blackridge Intelligence · Cloudflare D1</div>
+      <div class="mono text-xs text-zinc-400">Cloudflare D1 · Processing history</div>
     </div>
 
     <div class="bg-white rounded-2xl border border-zinc-200 overflow-hidden">
-      <div class="px-5 py-3.5 border-b border-zinc-100 flex items-center justify-between">
-        <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Processing Dates</span>
-        <button onclick="autoLoadD1()" class="text-xs text-zinc-400 hover:text-zinc-700 transition-colors flex items-center gap-1">
+      <div class="px-5 py-3.5 border-b border-zinc-100 flex items-center gap-3">
+        <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wide flex-shrink-0">Processing Dates</span>
+        <input type="text" id="picker-search" placeholder="Search by date…"
+          oninput="filterDatesPicker(this.value)"
+          class="flex-1 min-w-0 mono text-xs bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-1.5 text-zinc-700 placeholder-zinc-300 focus:outline-none focus:border-zinc-400 transition-colors">
+        <button onclick="autoLoadD1()" class="flex-shrink-0 text-xs text-zinc-400 hover:text-zinc-700 transition-colors flex items-center gap-1">
           <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
           Refresh
         </button>
       </div>
-      <div id="d1-uploads-list" class="divide-y divide-zinc-50"></div>
+      <div id="d1-uploads-list"></div>
       <div id="d1-no-uploads" class="hidden px-5 py-16 text-center">
         <svg class="w-8 h-8 text-zinc-200 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/></svg>
         <p class="text-sm text-zinc-400 font-medium">No datasets in D1 yet</p>
@@ -1829,43 +1832,81 @@ async function autoLoadD1() {
 }
 
 function renderDatesPicker(dates) {
-  const list    = document.getElementById('d1-uploads-list');
-  const latest  = dates[0];
+  window._allDates   = dates;
+  window._latestDate = dates[0] ? dates[0].processed_date : '';
+  _renderPickerRows(dates);
+}
 
-  function metricChips(d) {
-    const total   = d.total_records || 0;
-    const success = d.extraction_success || 0;
-    const failed  = d.extraction_failed  || 0;
-    const docs    = d.pdf_docs_found     || 0;
-    const pct     = total ? Math.round(success / total * 100) : 0;
-    const chips = [];
-    if (total) chips.push(`<span class="mono text-xs bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-medium">✓ ${pct}%</span>`);
-    if (failed) chips.push(`<span class="mono text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-medium">✗ ${failed.toLocaleString()}</span>`);
-    if (docs)   chips.push(`<span class="mono text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium">📄 ${docs.toLocaleString()}</span>`);
-    return chips.join('');
+function filterDatesPicker(q) {
+  const dates = window._allDates || [];
+  const t = q.trim().toLowerCase();
+  _renderPickerRows(t ? dates.filter(d => d.processed_date.toLowerCase().includes(t)) : dates);
+}
+
+function _renderPickerRows(dates) {
+  const list = document.getElementById('d1-uploads-list');
+  if (!dates.length) {
+    list.innerHTML = '<div class="px-5 py-8 text-center text-xs text-zinc-300">No dates match your search</div>';
+    return;
   }
 
-  const rows = dates.map((d, i) => {
-    const isLatest = i === 0;
-    return `<div class="flex items-center gap-3 px-5 py-3.5 ${isLatest ? 'bg-zinc-50' : ''} border-b border-zinc-50 hover:bg-zinc-50 transition-colors">
-      <div class="flex-1 min-w-0">
-        <div class="flex items-center gap-2 mb-1">
+  list.innerHTML = dates.map(d => {
+    const isLatest = d.processed_date === window._latestDate;
+    const total    = d.total_records      || 0;
+    const success  = d.extraction_success || 0;
+    const approved = d.approved_count     || 0;
+    const docs     = d.pdf_docs_found     || 0;
+    const exPct    = total ? Math.round(success  / total * 100) : 0;
+    const prPct    = total ? Math.round(approved / total * 100) : 0;
+
+    const tgParts  = (d.top_html_group || '').split(':');
+    const tgName   = tgParts[0] || '—';
+    const tgCount  = tgParts[1] ? parseInt(tgParts[1]).toLocaleString() : '';
+
+    const tsParts  = (d.top_csv_state || '').split(':');
+    const tsName   = tsParts[0] || '—';
+    const tsCount  = tsParts[1] ? parseInt(tsParts[1]).toLocaleString() : '';
+
+    const exColor  = exPct >= 80 ? 'text-emerald-600' : exPct >= 50 ? 'text-amber-600' : 'text-red-500';
+    const prColor  = prPct >= 30 ? 'text-blue-600'    : prPct >= 10 ? 'text-indigo-500' : 'text-zinc-500';
+
+    return `
+    <div class="px-5 py-4 hover:bg-zinc-50/60 transition-colors border-b border-zinc-100 last:border-0">
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2 flex-wrap">
           <span class="mono text-sm font-bold text-zinc-900">${d.processed_date}</span>
-          ${isLatest ? '<span class="text-xs text-zinc-400 font-medium">Latest</span>' : ''}
+          ${isLatest ? '<span class="text-[10px] font-semibold text-zinc-500 bg-zinc-100 px-2 py-0.5 rounded-full tracking-wide">LATEST</span>' : ''}
+          <span class="text-[10px] text-zinc-400">${(d.csv_rows||0).toLocaleString()} CSV · ${(d.html_items||0).toLocaleString()} HTML</span>
         </div>
-        <div class="flex flex-wrap items-center gap-1.5">
-          <span class="text-xs text-zinc-400">${(d.csv_rows||0).toLocaleString()} CSV · ${(d.html_items||0).toLocaleString()} HTML</span>
-          ${metricChips(d)}
+        <button onclick="loadDateFromD1('${escAttr(d.processed_date)}')"
+          class="flex-shrink-0 text-xs font-semibold ${isLatest ? 'bg-zinc-900 text-white hover:bg-zinc-700' : 'bg-white text-zinc-600 border border-zinc-200 hover:border-zinc-400 hover:text-zinc-900'} px-3.5 py-1.5 rounded-xl transition-colors ml-3">
+          ${isLatest ? 'Load Latest' : 'Load →'}
+        </button>
+      </div>
+      <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div class="bg-zinc-50 rounded-xl px-3 py-2.5">
+          <div class="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-1">Extraction</div>
+          <div class="text-sm font-bold ${exColor}">${total ? exPct + '%' : '—'}</div>
+          <div class="text-[10px] text-zinc-400 mt-0.5">${success.toLocaleString()} / ${total.toLocaleString()} records</div>
+        </div>
+        <div class="bg-zinc-50 rounded-xl px-3 py-2.5">
+          <div class="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-1">Projects</div>
+          <div class="text-sm font-bold ${prColor}">${total ? prPct + '%' : '—'}</div>
+          <div class="text-[10px] text-zinc-400 mt-0.5">${approved.toLocaleString()} LLM approved</div>
+        </div>
+        <div class="bg-zinc-50 rounded-xl px-3 py-2.5">
+          <div class="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-1">Top HTML Folder</div>
+          <div class="text-sm font-bold text-zinc-800 truncate">${escHtml(tgName)}</div>
+          <div class="text-[10px] text-zinc-400 mt-0.5">${tgCount ? tgCount + ' changes' : 'No HTML data'}</div>
+        </div>
+        <div class="bg-zinc-50 rounded-xl px-3 py-2.5">
+          <div class="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-1">Top State</div>
+          <div class="text-sm font-bold text-zinc-800 truncate">${escHtml(tsName)}</div>
+          <div class="text-[10px] text-zinc-400 mt-0.5">${tsCount ? tsCount + ' records' : 'No CSV data'}</div>
         </div>
       </div>
-      <button onclick="loadDateFromD1('${escAttr(d.processed_date)}')"
-        class="flex-shrink-0 text-xs font-semibold ${isLatest ? 'bg-zinc-900 text-white hover:bg-zinc-700' : 'bg-white text-zinc-600 border border-zinc-200 hover:border-zinc-400 hover:text-zinc-900'} px-3.5 py-2 rounded-xl transition-colors">
-        ${isLatest ? 'Load Latest' : 'Load →'}
-      </button>
     </div>`;
   }).join('');
-
-  list.innerHTML = rows || `<div class="px-5 py-8 text-center text-xs text-zinc-300">No dated datasets found</div>`;
 }
 
 function populateUploadSwitcher() { /* replaced by renderDateNavigator */ }
