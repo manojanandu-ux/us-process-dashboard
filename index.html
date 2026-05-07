@@ -1186,8 +1186,9 @@ function switchTab(tab) {
 // ── ANNOTATIONS ──
 async function loadAnnotations() {
   _annotations = {};
+  if (!currentDate) return;
   try {
-    const d = await (await fetch('/api/annotations')).json();
+    const d = await (await fetch(`/api/annotations?date=${encodeURIComponent(currentDate)}`)).json();
     _annotations = d.annotations || {};
   } catch(e) { console.warn('Failed to load annotations:', e); }
 }
@@ -1202,7 +1203,7 @@ async function saveAnnotation(sel) {
     const resp = await fetch('/api/annotations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url_key: key, annotation }),
+      body: JSON.stringify({ processed_date: currentDate, url_key: key, annotation }),
     });
     if (!resp.ok) {
       const msg = await resp.text().catch(() => resp.status);

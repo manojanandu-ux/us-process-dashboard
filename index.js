@@ -128,36 +128,40 @@ export default {
       return json({ ok: true, deleted_csv_for: uploadId });
     }
 
-    // ── GET /api/annotations ─────────────────────────────────────────────────
+    // ── GET /api/annotations?date=YYYY-MM-DD ─────────────────────────────────
     if (pathname === "/api/annotations" && request.method === "GET") {
       await env.DB.prepare(
-        "CREATE TABLE IF NOT EXISTS url_annotations (url_key TEXT PRIMARY KEY, annotation TEXT NOT NULL, updated_at TEXT DEFAULT (datetime('now')))"
+        "CREATE TABLE IF NOT EXISTS date_url_annotations (processed_date TEXT NOT NULL, url_key TEXT NOT NULL, annotation TEXT NOT NULL, updated_at TEXT DEFAULT (datetime('now')), PRIMARY KEY (processed_date, url_key))"
       ).run();
+      const date = (p.date || "").trim();
+      if (!date) return json({ annotations: {} });
       const { results } = await env.DB.prepare(
-        "SELECT url_key, annotation FROM url_annotations"
-      ).all();
+        "SELECT url_key, annotation FROM date_url_annotations WHERE processed_date = ?"
+      ).bind(date).all();
       const annotations = {};
       for (const row of results) annotations[row.url_key] = row.annotation;
       return json({ annotations });
     }
 
-    // ── POST /api/annotations ─────────────────────────────────────────────────
+    // ── POST /api/annotations { processed_date, url_key, annotation } ─────────
     if (pathname === "/api/annotations" && request.method === "POST") {
       const body       = await request.json();
-      const urlKey     = (body.url_key   || "").trim();
-      const annotation = (body.annotation || "").trim();
+      const date       = (body.processed_date || "").trim();
+      const urlKey     = (body.url_key        || "").trim();
+      const annotation = (body.annotation     || "").trim();
+      if (!date)   return err("processed_date required");
       if (!urlKey) return err("url_key required");
       await env.DB.prepare(
-        "CREATE TABLE IF NOT EXISTS url_annotations (url_key TEXT PRIMARY KEY, annotation TEXT NOT NULL, updated_at TEXT DEFAULT (datetime('now')))"
+        "CREATE TABLE IF NOT EXISTS date_url_annotations (processed_date TEXT NOT NULL, url_key TEXT NOT NULL, annotation TEXT NOT NULL, updated_at TEXT DEFAULT (datetime('now')), PRIMARY KEY (processed_date, url_key))"
       ).run();
       if (annotation) {
         await env.DB.prepare(
-          "INSERT OR REPLACE INTO url_annotations (url_key, annotation, updated_at) VALUES (?, ?, datetime('now'))"
-        ).bind(urlKey, annotation).run();
+          "INSERT OR REPLACE INTO date_url_annotations (processed_date, url_key, annotation, updated_at) VALUES (?, ?, ?, datetime('now'))"
+        ).bind(date, urlKey, annotation).run();
       } else {
         await env.DB.prepare(
-          "DELETE FROM url_annotations WHERE url_key = ?"
-        ).bind(urlKey).run();
+          "DELETE FROM date_url_annotations WHERE processed_date = ? AND url_key = ?"
+        ).bind(date, urlKey).run();
       }
       return json({ ok: true });
     }
