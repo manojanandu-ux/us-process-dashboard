@@ -3,10 +3,13 @@
  * Serves CSV records and HTML change data from Cloudflare D1.
  *
  * Routes:
- *   GET /api/uploads          — list recent uploads
- *   GET /api/records          — paginated CSV records (upload_id, state, page, limit)
- *   GET /api/html-changes     — paginated HTML changes (upload_id, group_key, page, limit)
- *   GET /api/stats            — aggregate counts for the latest upload
+ *   GET /api/uploads          — list recent uploads (with processed_date)
+ *   GET /api/dates            — distinct processed dates with extraction metrics
+ *   GET /api/records          — paginated CSV records (processed_date|upload_id, state, page, limit)
+ *   GET /api/html-changes     — paginated HTML changes (processed_date|upload_id, group_key, page, limit)
+ *   GET /api/stats            — aggregate counts for a processed_date or upload
+ *   GET /api/date-annotations?date= — get note for a processed date
+ *   POST /api/date-annotations      — save/delete note for a processed date
  */
 
 const CORS = {
@@ -42,13 +45,121 @@ export default {
       return env.ASSETS.fetch(request);
     }
 
+    // Schema migration — idempotent; silently ignored once column exists
+    try {
+      await env.DB.prepare("ALTER TABLE uploads ADD COLUMN processed_date TEXT").run();
+    } catch (_) {}
+    try {
+      await env.DB.prepare("CREATE TABLE IF NOT EXISTS date_annotations (processed_date TEXT PRIMARY KEY, annotation TEXT NOT NULL, updated_at TEXT DEFAULT (datetime('now')))").run();
+    } catch (_) {}
+
     // ── /api/uploads ──────────────────────────────────────────────────────────
     if (pathname === "/api/uploads") {
       const limit = Math.min(parseInt(p.limit) || 50, 100);
       const { results } = await env.DB.prepare(
-        "SELECT id, created_at, csv_file, html_file, csv_rows, html_items FROM uploads ORDER BY created_at DESC LIMIT ?"
+        "SELECT id, created_at, csv_file, html_file, csv_rows, html_items, processed_date FROM uploads ORDER BY created_at DESC LIMIT ?"
       ).bind(limit).all();
       return json({ uploads: results });
+    }
+
+    // ── /api/dates ────────────────────────────────────────────────────────────
+    if (pathname === "/api/dates") {
+      const { results } = await env.DB.prepare(`
+        SELECT
+          u.processed_date,
+          SUM(u.csv_rows)   AS csv_rows,
+          SUM(u.html_items) AS html_items,
+          COUNT(u.id)       AS upload_count,
+          (SELECT html_file FROM uploads
+           WHERE processed_date = u.processed_date AND html_file != ''
+           ORDER BY created_at DESC LIMIT 1) AS html_file,
+          COUNT(r.id) AS total_records,
+          COUNT(CASE WHEN r.extraction_status = 'Success' THEN 1 END)         AS extraction_success,
+          COUNT(CASE WHEN r.extraction_status != 'Success'
+                      AND r.extraction_status != '' THEN 1 END)               AS extraction_failed,
+          COUNT(CASE WHEN r.has_plans_specs = 'Yes'
+                       OR r.has_bidding_docs = 'Yes' THEN 1 END)              AS pdf_docs_found
+        FROM uploads u
+        LEFT JOIN csv_records r ON r.upload_id = u.id
+        WHERE u.processed_date IS NOT NULL AND u.processed_date != ''
+        GROUP BY u.processed_date
+        ORDER BY u.processed_date DESC
+        LIMIT 90
+      `).all();
+      return json({ dates: results });
+    }
+
+    // ── DELETE /api/dates/:date/csv — delete only CSV records for a date ─────
+    if (request.method === "DELETE" && pathname.match(/^\/api\/dates\/\d{4}-\d{2}-\d{2}\/csv$/)) {
+      const date = pathname.split("/")[3];
+      const { results: ups } = await env.DB.prepare(
+        "SELECT id FROM uploads WHERE processed_date = ?"
+      ).bind(date).all();
+      for (const u of ups) {
+        await env.DB.prepare("DELETE FROM csv_records WHERE upload_id = ?").bind(u.id).run();
+        await env.DB.prepare("UPDATE uploads SET csv_rows = 0 WHERE id = ?").bind(u.id).run();
+      }
+      return json({ ok: true, date, uploads_cleared: ups.length });
+    }
+
+    // ── DELETE /api/dates/:date — delete all uploads + records + HTML for a date
+    if (request.method === "DELETE" && pathname.match(/^\/api\/dates\/\d{4}-\d{2}-\d{2}$/)) {
+      const date = pathname.split("/")[3];
+      const { results: ups } = await env.DB.prepare(
+        "SELECT id, html_file FROM uploads WHERE processed_date = ?"
+      ).bind(date).all();
+      for (const u of ups) {
+        await Promise.all([
+          env.DB.prepare("DELETE FROM csv_records  WHERE upload_id = ?").bind(u.id).run(),
+          env.DB.prepare("DELETE FROM html_changes WHERE upload_id = ?").bind(u.id).run(),
+        ]);
+        if (u.html_file) await env.HTML_BUCKET.delete(u.html_file).catch(() => {});
+        await env.DB.prepare("DELETE FROM uploads WHERE id = ?").bind(u.id).run();
+      }
+      await env.DB.prepare("DELETE FROM date_annotations WHERE processed_date = ?").bind(date).run().catch(() => {});
+      return json({ ok: true, date, deleted_uploads: ups.length });
+    }
+
+    // ── DELETE /api/uploads/:id/csv ──────────────────────────────────────────
+    if (request.method === "DELETE" && pathname.match(/^\/api\/uploads\/[^/]+\/csv$/)) {
+      const uploadId = pathname.split("/")[3];
+      await env.DB.prepare("DELETE FROM csv_records WHERE upload_id = ?").bind(uploadId).run();
+      await env.DB.prepare("UPDATE uploads SET csv_rows = 0 WHERE id = ?").bind(uploadId).run();
+      return json({ ok: true, deleted_csv_for: uploadId });
+    }
+
+    // ── GET /api/annotations ─────────────────────────────────────────────────
+    if (pathname === "/api/annotations" && request.method === "GET") {
+      await env.DB.prepare(
+        "CREATE TABLE IF NOT EXISTS url_annotations (url_key TEXT PRIMARY KEY, annotation TEXT NOT NULL, updated_at TEXT DEFAULT (datetime('now')))"
+      ).run();
+      const { results } = await env.DB.prepare(
+        "SELECT url_key, annotation FROM url_annotations"
+      ).all();
+      const annotations = {};
+      for (const row of results) annotations[row.url_key] = row.annotation;
+      return json({ annotations });
+    }
+
+    // ── POST /api/annotations ─────────────────────────────────────────────────
+    if (pathname === "/api/annotations" && request.method === "POST") {
+      const body       = await request.json();
+      const urlKey     = (body.url_key   || "").trim();
+      const annotation = (body.annotation || "").trim();
+      if (!urlKey) return err("url_key required");
+      await env.DB.prepare(
+        "CREATE TABLE IF NOT EXISTS url_annotations (url_key TEXT PRIMARY KEY, annotation TEXT NOT NULL, updated_at TEXT DEFAULT (datetime('now')))"
+      ).run();
+      if (annotation) {
+        await env.DB.prepare(
+          "INSERT OR REPLACE INTO url_annotations (url_key, annotation, updated_at) VALUES (?, ?, datetime('now'))"
+        ).bind(urlKey, annotation).run();
+      } else {
+        await env.DB.prepare(
+          "DELETE FROM url_annotations WHERE url_key = ?"
+        ).bind(urlKey).run();
+      }
+      return json({ ok: true });
     }
 
     // ── DELETE /api/uploads/:id ───────────────────────────────────────────────
@@ -59,6 +170,7 @@ export default {
       await Promise.all([
         env.DB.prepare("DELETE FROM csv_records WHERE upload_id = ?").bind(uploadId).run(),
         env.DB.prepare("DELETE FROM html_changes WHERE upload_id = ?").bind(uploadId).run(),
+        env.DB.prepare("DELETE FROM html_annotations WHERE upload_id = ?").bind(uploadId).run().catch(() => {}),
       ]);
       await env.DB.prepare("DELETE FROM uploads WHERE id = ?").bind(uploadId).run();
       if (uploadRow?.html_file) {
@@ -73,18 +185,35 @@ export default {
       const limit = Math.min(parseInt(p.limit) || 50, 1000);
       const offset = (page - 1) * limit;
 
-      // resolve upload_id: explicit or latest
-      let uploadId = p.upload_id;
-      if (!uploadId) {
+      // resolve upload_ids: processed_date > upload_id > latest date
+      let uploadIds;
+      if (p.processed_date) {
+        const { results: rows } = await env.DB.prepare(
+          "SELECT id FROM uploads WHERE processed_date = ?"
+        ).bind(p.processed_date).all();
+        uploadIds = rows.map(r => r.id);
+        if (!uploadIds.length) return json({ records: [], total: 0, page, limit });
+      } else if (p.upload_id) {
+        uploadIds = [p.upload_id];
+      } else {
         const row = await env.DB.prepare(
-          "SELECT id FROM uploads ORDER BY created_at DESC LIMIT 1"
+          "SELECT processed_date FROM uploads WHERE processed_date IS NOT NULL AND processed_date != '' ORDER BY processed_date DESC LIMIT 1"
         ).first();
-        if (!row) return json({ records: [], total: 0, page, limit });
-        uploadId = row.id;
+        if (!row) {
+          const latest = await env.DB.prepare("SELECT id FROM uploads ORDER BY created_at DESC LIMIT 1").first();
+          if (!latest) return json({ records: [], total: 0, page, limit });
+          uploadIds = [latest.id];
+        } else {
+          const { results: rows } = await env.DB.prepare(
+            "SELECT id FROM uploads WHERE processed_date = ?"
+          ).bind(row.processed_date).all();
+          uploadIds = rows.map(r => r.id);
+        }
       }
 
-      let whereClauses = ["upload_id = ?"];
-      let binds = [uploadId];
+      const idPH = uploadIds.map(() => "?").join(",");
+      let whereClauses = [`upload_id IN (${idPH})`];
+      let binds = [...uploadIds];
 
       if (p.state)        { whereClauses.push("state = ?");         binds.push(p.state); }
       if (p.is_project)   { whereClauses.push("is_project = ?");    binds.push(p.is_project); }
@@ -107,7 +236,7 @@ export default {
       ).bind(...binds).first();
 
       return json({
-        upload_id: uploadId,
+        processed_date: p.processed_date || null,
         records,
         total: countRow?.n ?? 0,
         page,
@@ -122,17 +251,34 @@ export default {
       const limit = Math.min(parseInt(p.limit) || 50, 1000);
       const offset = (page - 1) * limit;
 
-      let uploadId = p.upload_id;
-      if (!uploadId) {
+      let uploadIds;
+      if (p.processed_date) {
+        const { results: rows } = await env.DB.prepare(
+          "SELECT id FROM uploads WHERE processed_date = ?"
+        ).bind(p.processed_date).all();
+        uploadIds = rows.map(r => r.id);
+        if (!uploadIds.length) return json({ changes: [], total: 0, page, limit });
+      } else if (p.upload_id) {
+        uploadIds = [p.upload_id];
+      } else {
         const row = await env.DB.prepare(
-          "SELECT id FROM uploads ORDER BY created_at DESC LIMIT 1"
+          "SELECT processed_date FROM uploads WHERE processed_date IS NOT NULL AND processed_date != '' ORDER BY processed_date DESC LIMIT 1"
         ).first();
-        if (!row) return json({ changes: [], total: 0, page, limit });
-        uploadId = row.id;
+        if (!row) {
+          const latest = await env.DB.prepare("SELECT id FROM uploads ORDER BY created_at DESC LIMIT 1").first();
+          if (!latest) return json({ changes: [], total: 0, page, limit });
+          uploadIds = [latest.id];
+        } else {
+          const { results: rows } = await env.DB.prepare(
+            "SELECT id FROM uploads WHERE processed_date = ?"
+          ).bind(row.processed_date).all();
+          uploadIds = rows.map(r => r.id);
+        }
       }
 
-      let whereClauses = ["upload_id = ?"];
-      let binds = [uploadId];
+      const htmlIdPH = uploadIds.map(() => "?").join(",");
+      let whereClauses = [`upload_id IN (${htmlIdPH})`];
+      let binds = [...uploadIds];
 
       if (p.group_key) { whereClauses.push("group_key = ?"); binds.push(p.group_key); }
       if (p.search) {
@@ -152,13 +298,13 @@ export default {
         `SELECT COUNT(*) as n FROM html_changes WHERE ${where}`
       ).bind(...binds).first();
 
-      // also return distinct group_keys for filter dropdowns
+      // distinct group_keys across all upload_ids for this date
       const { results: groups } = await env.DB.prepare(
-        "SELECT DISTINCT group_key FROM html_changes WHERE upload_id = ? ORDER BY group_key"
-      ).bind(uploadId).all();
+        `SELECT DISTINCT group_key FROM html_changes WHERE upload_id IN (${htmlIdPH}) ORDER BY group_key`
+      ).bind(...uploadIds).all();
 
       return json({
-        upload_id: uploadId,
+        processed_date: p.processed_date || null,
         changes,
         total: countRow?.n ?? 0,
         page,
@@ -170,14 +316,31 @@ export default {
 
     // ── /api/stats ────────────────────────────────────────────────────────────
     if (pathname === "/api/stats") {
-      let uploadId = p.upload_id;
-      if (!uploadId) {
+      let uploadIds;
+      if (p.processed_date) {
+        const { results: rows } = await env.DB.prepare(
+          "SELECT id FROM uploads WHERE processed_date = ?"
+        ).bind(p.processed_date).all();
+        uploadIds = rows.map(r => r.id);
+        if (!uploadIds.length) return json({ error: "No data for this date" }, 404);
+      } else if (p.upload_id) {
+        uploadIds = [p.upload_id];
+      } else {
         const row = await env.DB.prepare(
-          "SELECT id FROM uploads ORDER BY created_at DESC LIMIT 1"
+          "SELECT processed_date FROM uploads WHERE processed_date IS NOT NULL AND processed_date != '' ORDER BY processed_date DESC LIMIT 1"
         ).first();
-        if (!row) return json({ error: "No uploads found" }, 404);
-        uploadId = row.id;
+        if (!row) {
+          const latest = await env.DB.prepare("SELECT id FROM uploads ORDER BY created_at DESC LIMIT 1").first();
+          if (!latest) return json({ error: "No uploads found" }, 404);
+          uploadIds = [latest.id];
+        } else {
+          const { results: rows } = await env.DB.prepare(
+            "SELECT id FROM uploads WHERE processed_date = ?"
+          ).bind(row.processed_date).all();
+          uploadIds = rows.map(r => r.id);
+        }
       }
+      const uploadId = uploadIds[0]; // for backward-compat stats queries below
 
       const [upload, csvCount, htmlCount, stateRows, tradeRows, isProjectRows] = await Promise.all([
         env.DB.prepare("SELECT * FROM uploads WHERE id = ?").bind(uploadId).first(),
@@ -212,7 +375,8 @@ export default {
       const uploadId = (form.get("upload_id") || "").trim();
       if (!file) return err("No file provided");
       const now      = new Date();
-      const dateStr  = now.toISOString().slice(0, 10);
+      const dateStr  = ((form.get("processed_date") || "").trim().slice(0, 10))
+                    || now.toISOString().slice(0, 10);
       const filename = file.name || "report.html";
       const key      = `${dateStr}/${now.getTime()}-${filename}`;
       await env.HTML_BUCKET.put(key, file.stream(), {
@@ -305,6 +469,112 @@ export default {
         return json({ ok: true, deleted_key: key });
       }
       return err("Method not allowed", 405);
+    }
+
+    // ── GET /api/date-annotations?date=YYYY-MM-DD ─────────────────────────────
+    if (pathname === "/api/date-annotations" && request.method === "GET") {
+      await env.DB.prepare(
+        "CREATE TABLE IF NOT EXISTS date_annotations (processed_date TEXT PRIMARY KEY, annotation TEXT NOT NULL, updated_at TEXT DEFAULT (datetime('now')))"
+      ).run();
+      const date = (p.date || "").trim();
+      if (!date) return json({ annotation: "" });
+      const row = await env.DB.prepare(
+        "SELECT annotation FROM date_annotations WHERE processed_date = ?"
+      ).bind(date).first();
+      return json({ annotation: row?.annotation || "" });
+    }
+
+    // ── POST /api/date-annotations { date, annotation } ──────────────────────
+    if (pathname === "/api/date-annotations" && request.method === "POST") {
+      await env.DB.prepare(
+        "CREATE TABLE IF NOT EXISTS date_annotations (processed_date TEXT PRIMARY KEY, annotation TEXT NOT NULL, updated_at TEXT DEFAULT (datetime('now')))"
+      ).run();
+      const body       = await request.json();
+      const date       = (body.date       || "").trim();
+      const annotation = (body.annotation || "").trim();
+      if (!date) return err("date required");
+      if (annotation) {
+        await env.DB.prepare(
+          "INSERT OR REPLACE INTO date_annotations (processed_date, annotation, updated_at) VALUES (?, ?, datetime('now'))"
+        ).bind(date, annotation).run();
+      } else {
+        await env.DB.prepare(
+          "DELETE FROM date_annotations WHERE processed_date = ?"
+        ).bind(date).run();
+      }
+      return json({ ok: true });
+    }
+
+    // ── POST /api/migrate/backfill-dates ──────────────────────────────────────
+    if (pathname === "/api/migrate/backfill-dates" && request.method === "POST") {
+      let changes = 0;
+
+      // Step 1 — set processed_date from csv_records.processing_date where we can
+      const r1 = await env.DB.prepare(`
+        UPDATE uploads
+        SET processed_date = (
+          SELECT processing_date FROM csv_records
+          WHERE csv_records.upload_id = uploads.id
+            AND processing_date IS NOT NULL AND processing_date != ''
+          LIMIT 1
+        )
+        WHERE (processed_date IS NULL OR processed_date = '')
+          AND EXISTS (
+            SELECT 1 FROM csv_records
+            WHERE csv_records.upload_id = uploads.id
+              AND processing_date IS NOT NULL AND processing_date != ''
+          )
+      `).run();
+      changes += r1.meta?.changes ?? 0;
+
+      // Step 2 — for uploads still missing processed_date, try html_file R2 key prefix
+      const r2a = await env.DB.prepare(`
+        UPDATE uploads
+        SET processed_date = substr(html_file, 1, 10)
+        WHERE (processed_date IS NULL OR processed_date = '')
+          AND html_file GLOB '????-??-??/*'
+      `).run();
+      changes += r2a.meta?.changes ?? 0;
+
+      // Step 3 — list R2 objects and link any unlinked uploads by matching date
+      try {
+        const listed = await env.HTML_BUCKET.list({ limit: 500 });
+        for (const obj of listed.objects) {
+          const m = obj.key.match(/^(\d{4}-\d{2}-\d{2})\//);
+          if (!m) continue;
+          const date = m[1];
+          // Find uploads for this date that have no html_file set
+          const { results: rows } = await env.DB.prepare(`
+            SELECT DISTINCT u.id FROM uploads u
+            LEFT JOIN csv_records r ON r.upload_id = u.id
+            WHERE u.processed_date = ?
+              AND (u.html_file IS NULL OR u.html_file = '')
+            LIMIT 1
+          `).bind(date).all();
+          for (const row of rows) {
+            await env.DB.prepare(
+              "UPDATE uploads SET html_file = ? WHERE id = ?"
+            ).bind(obj.key, row.id).run();
+            changes++;
+          }
+          // Also find uploads whose csv_records.processing_date matches but processed_date still null
+          const { results: unlinked } = await env.DB.prepare(`
+            SELECT DISTINCT u.id FROM uploads u
+            JOIN csv_records r ON r.upload_id = u.id
+            WHERE r.processing_date = ?
+              AND (u.processed_date IS NULL OR u.processed_date = '')
+            LIMIT 1
+          `).bind(date).all();
+          for (const row of unlinked) {
+            await env.DB.prepare(
+              "UPDATE uploads SET processed_date = ?, html_file = CASE WHEN html_file = '' OR html_file IS NULL THEN ? ELSE html_file END WHERE id = ?"
+            ).bind(date, obj.key, row.id).run();
+            changes++;
+          }
+        }
+      } catch (_) {}
+
+      return json({ ok: true, changes });
     }
 
     return err("Not found", 404);

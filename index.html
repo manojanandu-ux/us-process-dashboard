@@ -89,7 +89,7 @@
 
     <div class="bg-white rounded-2xl border border-zinc-200 overflow-hidden">
       <div class="px-5 py-3.5 border-b border-zinc-100 flex items-center justify-between">
-        <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Available Datasets</span>
+        <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Processing Dates</span>
         <button onclick="autoLoadD1()" class="text-xs text-zinc-400 hover:text-zinc-700 transition-colors flex items-center gap-1">
           <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
           Refresh
@@ -129,11 +129,16 @@
         </div>
         <span class="font-semibold text-zinc-900 text-sm hidden sm:block">US Projects Dashboard</span>
         <span class="text-zinc-300 hidden sm:block">|</span>
-        <!-- Upload date switcher -->
-        <select id="upload-switcher" onchange="switchUpload(this.value)"
-          class="text-xs mono text-zinc-600 border border-zinc-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:border-zinc-400 cursor-pointer max-w-xs truncate">
-          <option>—</option>
-        </select>
+        <!-- Date navigator -->
+        <div class="flex items-center gap-1.5" id="date-navigator">
+          <button id="nav-prev" onclick="navigateDate(1)"
+            class="w-6 h-6 flex items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-400 hover:text-zinc-700 hover:border-zinc-300 transition-colors disabled:opacity-25 disabled:cursor-not-allowed text-xs">‹</button>
+          <button id="nav-date-badge" onclick="resetDashboard()"
+            class="mono text-xs font-semibold text-zinc-900 border border-zinc-200 rounded-lg px-2.5 py-1 bg-white hover:bg-zinc-50 transition-colors whitespace-nowrap">—</button>
+          <div id="nav-metrics" class="flex items-center gap-1"></div>
+          <button id="nav-next" onclick="navigateDate(-1)"
+            class="w-6 h-6 flex items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-400 hover:text-zinc-700 hover:border-zinc-300 transition-colors disabled:opacity-25 disabled:cursor-not-allowed text-xs">›</button>
+        </div>
       </div>
       <div class="flex items-center gap-2">
         <button onclick="openAdminPanel()" class="text-xs text-zinc-400 hover:text-zinc-800 transition-colors flex items-center gap-1.5 border border-zinc-200 hover:border-zinc-300 rounded-lg px-2.5 py-1.5 bg-white">
@@ -178,6 +183,24 @@
         <div class="text-xs text-zinc-300 mt-0.5">all CSV records</div>
         <div class="mt-2 h-0.5 bg-red-100 rounded-full overflow-hidden"><div id="bar-failed" class="h-full bg-red-400 rounded-full transition-all duration-700" style="width:0%"></div></div>
       </div>
+    </div>
+  </div>
+
+  <!-- Annotation strip -->
+  <div id="annotation-strip" class="bg-white border-b border-zinc-100">
+    <div class="max-w-screen-2xl mx-auto px-6 py-2.5 flex items-start gap-3">
+      <button onclick="toggleAnnotationStrip()" class="flex-shrink-0 flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-600 transition-colors mt-0.5 font-medium select-none">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+        <span id="annot-strip-label">Notes</span>
+        <span id="annot-strip-chevron" class="text-zinc-300">▾</span>
+      </button>
+      <div id="annot-collapsed-preview" class="flex-1 min-w-0 text-xs text-zinc-400 italic truncate mt-0.5 cursor-pointer" onclick="toggleAnnotationStrip()">Add notes for this date…</div>
+      <div id="annot-expanded" class="hidden flex-1 min-w-0">
+        <textarea id="annot-textarea" rows="2" placeholder="Add notes for this date…"
+          class="w-full text-xs text-zinc-700 border border-zinc-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-zinc-400 transition-colors resize-none placeholder-zinc-300"
+          oninput="onAnnotationInput()"></textarea>
+      </div>
+      <span id="annot-save-status" class="flex-shrink-0 text-xs text-zinc-300 mt-0.5 w-20 text-right"></span>
     </div>
   </div>
 
@@ -242,6 +265,7 @@
         <option value="Other sector">Other sector</option>
         <option value="Duplicate Link">Duplicate Link</option>
         <option value="Need to Update">Need to Update</option>
+        <option value="Not Under Client Scope">Not Under Client Scope</option>
       </select>
       <div class="ml-auto flex items-center gap-2">
         <span class="text-xs text-zinc-400 mono" id="showing-count">—</span>
@@ -329,6 +353,7 @@
             <option value="Other sector">Other sector</option>
             <option value="Duplicate Link">Duplicate Link</option>
             <option value="Need to Update">Need to Update</option>
+            <option value="Not Under Client Scope">Not Under Client Scope</option>
           </select>
           <button onclick="exportHTMLExcel()" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 border border-zinc-200 text-zinc-500 hover:border-emerald-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-all bg-white">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
@@ -365,6 +390,7 @@
               <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide" onclick="sortTable('approved','Confidence')">Confidence <span class="text-zinc-300 text-xs">↕</span></th>
               <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Docs</th>
               <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Annotation</th>
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Not a Project Reason</th>
               <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Link</th>
             </tr>
           </thead>
@@ -392,6 +418,7 @@
               <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide" onclick="sortTable('rejected','Content_Quality')">Quality <span class="text-zinc-300 text-xs">↕</span></th>
               <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Text</th>
               <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Annotation</th>
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Not a Project Reason</th>
               <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Link</th>
             </tr>
           </thead>
@@ -419,6 +446,7 @@
               <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Text</th>
               <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide" onclick="sortTable('failed','Processing_Date')">Date <span class="text-zinc-300 text-xs">↕</span></th>
               <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Annotation</th>
+              <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Not a Project Reason</th>
               <th class="px-4 py-3 text-xs font-semibold text-zinc-500 uppercase tracking-wide">Link</th>
             </tr>
           </thead>
@@ -446,6 +474,13 @@
   </div>
   <div class="flex-1 overflow-y-auto px-6 py-5">
     <p class="text-xs text-zinc-400 mb-4">Delete old uploads to free up D1 storage. This permanently removes all CSV records and HTML changes for that dataset.</p>
+    <div class="mb-4 p-3 bg-zinc-50 border border-zinc-200 rounded-lg flex items-center justify-between gap-3">
+      <div>
+        <p class="text-xs font-medium text-zinc-700">Backfill processed dates</p>
+        <p class="text-xs text-zinc-400 mt-0.5">Sets <code class="bg-zinc-100 px-1 rounded">processed_date</code> on uploads that were created before this feature was added.</p>
+      </div>
+      <button id="backfill-btn" onclick="runBackfill()" class="shrink-0 text-xs font-medium bg-zinc-800 text-white px-3 py-1.5 rounded-lg hover:bg-zinc-700 transition-colors">Run</button>
+    </div>
     <div id="manage-list" class="space-y-2"></div>
     <div id="manage-loading" class="text-center py-8">
       <div class="w-5 h-5 border-2 border-zinc-200 border-t-zinc-700 rounded-full animate-spin mx-auto"></div>
@@ -512,11 +547,13 @@ let currentTab = 'htmlmap';
 const PAGE_SIZE = 75;
 let htmlData = [], htmlLoaded = false, htmlFileName = '';
 let urlToCSVRows = {};
-let allUploads = [];   // list from /api/uploads
+let allDates   = [];   // list from /api/dates
 let allR2Files = [];   // list from /api/html-files
-let activeUploadId = '';
+let currentDate = '';  // currently loaded processed_date
 let _annotations = {};
-const ANNOTATION_OPTIONS = ['Need to Create','Already exists','Not a project','Other sector','Duplicate Link','Need to Update'];
+let _annotSaveTimer = null;
+const ANNOTATION_OPTIONS = ['Need to Create','Already exists','Not a project','Other sector','Duplicate Link','Need to Update','Not Under Client Scope'];
+const REASON_OPTIONS     = ['Bid result','Civil','Public art project','Material purchase projects','Other Reason','SMS'];
 
 // ── D1 COLUMN MAPPING ──
 const D1_TO_CSV = {
@@ -784,6 +821,7 @@ function renderApproved() {
       <td class="px-4 py-3">${confBar(row['Confidence'])}</td>
       <td class="px-4 py-3">${docDots(row)}</td>
       ${annotCell(row)}
+      ${reasonCell(row)}
       <td class="px-4 py-3">${linkIcon(url)}</td>
     </tr>`;
   }).join('');
@@ -809,6 +847,7 @@ function renderRejected() {
       <td class="px-4 py-3">${qBadge(row['Content_Quality'])}</td>
       <td class="px-4 py-3 text-xs text-zinc-500 max-w-xs"><span title="${(row['Text']||'').replace(/"/g,'&quot;')}">${truncate(row['Text'],120)}</span></td>
       ${annotCell(row)}
+      ${reasonCell(row)}
       <td class="px-4 py-3">${linkIcon(url)}</td>
     </tr>`;
   }).join('');
@@ -834,6 +873,7 @@ function renderFailed() {
       <td class="px-4 py-3 text-xs text-zinc-500 max-w-xs"><span title="${(row['Text']||'').replace(/"/g,'&quot;')}">${truncate(row['Text'],120)}</span></td>
       <td class="px-4 py-3 text-xs mono text-zinc-400 whitespace-nowrap">${row['Processing_Date']||'—'}</td>
       ${annotCell(row)}
+      ${reasonCell(row)}
       <td class="px-4 py-3">${linkIcon(url)}</td>
     </tr>`;
   }).join('');
@@ -1144,32 +1184,37 @@ function switchTab(tab) {
 }
 
 // ── ANNOTATIONS ──
-async function loadAnnotations(uploadId) {
+async function loadAnnotations() {
   _annotations = {};
-  if (!uploadId) return;
   try {
-    const d = await (await fetch(`/api/annotations?upload_id=${encodeURIComponent(uploadId)}`)).json();
+    const d = await (await fetch('/api/annotations')).json();
     _annotations = d.annotations || {};
   } catch(e) { console.warn('Failed to load annotations:', e); }
 }
 
-let _saveAnnotTimer = null;
-function saveAnnotation(sel) {
+async function saveAnnotation(sel) {
   const key        = decodeURIComponent(sel.dataset.annotKey || '');
   const annotation = sel.value;
-  if (!key || !activeUploadId) return;
+  if (!key) return;
   if (annotation) { _annotations[key] = annotation; }
   else            { delete _annotations[key]; }
-  clearTimeout(_saveAnnotTimer);
-  _saveAnnotTimer = setTimeout(async () => {
-    try {
-      await fetch('/api/annotations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ upload_id: activeUploadId, url_key: key, annotation }),
-      });
-    } catch(e) { console.warn('Annotation save failed:', e); }
-  }, 400);
+  try {
+    const resp = await fetch('/api/annotations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url_key: key, annotation }),
+    });
+    if (!resp.ok) {
+      const msg = await resp.text().catch(() => resp.status);
+      console.error('Annotation save failed:', msg);
+      sel.style.borderColor = '#ef4444';
+      setTimeout(() => { sel.style.borderColor = ''; }, 2000);
+    }
+  } catch(e) {
+    console.error('Annotation save error:', e);
+    sel.style.borderColor = '#ef4444';
+    setTimeout(() => { sel.style.borderColor = ''; }, 2000);
+  }
 }
 
 function annotKey(item) {
@@ -1177,7 +1222,7 @@ function annotKey(item) {
 }
 
 function rowAnnotKey(row) {
-  return normalizeURL(row['Link'] || row['Web Page'] || '');
+  return normalizeURL(row['Web Page'] || row['Link'] || '');
 }
 
 function annotCell(row) {
@@ -1194,7 +1239,26 @@ function annotCell(row) {
   </td>`;
 }
 
+function rowReasonKey(row)  { return rowAnnotKey(row) + '__np_reason'; }
+function itemReasonKey(item){ return annotKey(item)   + '__np_reason'; }
+
+function reasonCell(row) {
+  const key = rowReasonKey(row);
+  const cur = _annotations[key] || '';
+  return `<td class="px-4 py-3" onclick="event.stopPropagation()">
+    <select class="text-xs border border-zinc-200 rounded-lg px-2 py-1 bg-white text-zinc-600 focus:outline-none focus:border-zinc-400 cursor-pointer w-44"
+      data-annot-key="${encodeURIComponent(key)}"
+      onchange="saveAnnotation(this)"
+      onclick="event.stopPropagation()">
+      <option value="">—</option>
+      ${REASON_OPTIONS.map(o => `<option value="${o}" ${cur===o?'selected':''}>${o}</option>`).join('')}
+    </select>
+  </td>`;
+}
+
 // ── EXPORT ──
+const APPROVED_EXPORT_COLS = ['Project_Name','Agency','State','Region','City','Location','Bid_Deadline','Bid_Value','Project_Type','Heading','Summary','Scope','Trade','Annotation','Not a Project Reason'];
+
 function exportExcel() {
   if (!window.XLSX) { alert('Excel library not loaded'); return; }
   const wb      = XLSX.utils.book_new();
@@ -1205,14 +1269,29 @@ function exportExcel() {
     const data = filtered[tab];
     if (!data.length) return;
     hasData = true;
-    const keys = Object.keys(data[0]).filter(k => !exclude.has(k));
-    const rows = data.map(row => {
-      const obj = {};
-      keys.forEach(k => { obj[k] = row[k] ?? ''; });
-      const url = normalizeURL(row['Link'] || row['Web Page'] || '');
-      obj['Annotation'] = _annotations[url] || '';
-      return obj;
-    });
+    let rows;
+    if (tab === 'approved') {
+      rows = data.map(row => {
+        const url    = normalizeURL(row['Web Page'] || row['Link'] || '');
+        const reason = url ? (_annotations[url + '__np_reason'] || '') : '';
+        const obj = {};
+        APPROVED_EXPORT_COLS.forEach(k => {
+          if (k === 'Annotation')          obj[k] = _annotations[url] || '';
+          else if (k === 'Not a Project Reason') obj[k] = reason;
+          else                             obj[k] = row[k] ?? '';
+        });
+        return obj;
+      });
+    } else {
+      const keys = Object.keys(data[0]).filter(k => !exclude.has(k));
+      rows = data.map(row => {
+        const obj = {};
+        keys.forEach(k => { obj[k] = row[k] ?? ''; });
+        const url = normalizeURL(row['Link'] || row['Web Page'] || '');
+        obj['Annotation'] = _annotations[url] || '';
+        return obj;
+      });
+    }
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), tab.charAt(0).toUpperCase() + tab.slice(1));
   });
 
@@ -1255,7 +1334,15 @@ function resetDashboard() {
   sortState={approved:{col:'',dir:'asc'},rejected:{col:'',dir:'asc'},failed:{col:'',dir:'asc'}};
   stateData={}; mapMode='total'; mapRendered=false;
   htmlData=[]; htmlLoaded=false; htmlFileName='';
-  urlToCSVRows={}; activeUploadId=''; _annotations={};
+  urlToCSVRows={}; currentDate=''; _annotations={};
+  clearTimeout(_annotSaveTimer);
+  const annotTa = document.getElementById('annot-textarea'); if (annotTa) annotTa.value='';
+  const annotPrev = document.getElementById('annot-collapsed-preview'); if (annotPrev) annotPrev.textContent='Add notes for this date…';
+  const annotLabel = document.getElementById('annot-strip-label'); if (annotLabel) annotLabel.textContent='Notes';
+  _annotExpanded = false;
+  const ae = document.getElementById('annot-expanded'); if (ae) ae.classList.add('hidden');
+  const ac = document.getElementById('annot-collapsed-preview'); if (ac) ac.classList.remove('hidden');
+  const ch = document.getElementById('annot-strip-chevron'); if (ch) ch.textContent='▾';
   currentTab='htmlmap';
   ['state-filter','region-filter','type-filter'].forEach(id => {
     const el=document.getElementById(id); if(el){while(el.options.length>1) el.remove(1); el.value='';}
@@ -1712,27 +1799,26 @@ async function autoLoadD1() {
   document.getElementById('d1-picker').classList.add('hidden');
   document.getElementById('d1-error').classList.add('hidden');
   try {
-    const [uploadsResp, r2Resp] = await Promise.all([
-      fetch('/api/uploads?limit=50'),
+    const [datesResp, r2Resp] = await Promise.all([
+      fetch('/api/dates'),
       fetch('/api/html-files').catch(() => null),
     ]);
-    if (!uploadsResp.ok) throw new Error(`HTTP ${uploadsResp.status}`);
-    const data    = await uploadsResp.json();
-    allUploads    = data.uploads || [];
-    const r2Data  = r2Resp ? await r2Resp.json().catch(() => ({})) : {};
-    allR2Files    = r2Data.files || [];
+    if (!datesResp.ok) throw new Error(`HTTP ${datesResp.status}`);
+    const data   = await datesResp.json();
+    allDates     = data.dates || [];
+    const r2Data = r2Resp ? await r2Resp.json().catch(() => ({})) : {};
+    allR2Files   = r2Data.files || [];
 
     document.getElementById('d1-loading').classList.add('hidden');
 
-    if (!allUploads.length) {
+    if (!allDates.length) {
       document.getElementById('d1-no-uploads').classList.remove('hidden');
       document.getElementById('d1-picker').classList.remove('hidden');
       return;
     }
 
     document.getElementById('d1-no-uploads').classList.add('hidden');
-    renderUploadsPicker(allUploads, allR2Files);
-    populateUploadSwitcher(allUploads);
+    renderDatesPicker(allDates);
     document.getElementById('d1-picker').classList.remove('hidden');
   } catch(e) {
     document.getElementById('d1-loading').classList.add('hidden');
@@ -1741,150 +1827,117 @@ async function autoLoadD1() {
   }
 }
 
-function renderUploadsPicker(uploads, r2Files) {
-  const list = document.getElementById('d1-uploads-list');
-  const latest     = uploads[0];
-  const latestDt   = latest.created_at ? new Date(latest.created_at).toLocaleString('en-GB', { dateStyle:'medium', timeStyle:'short' }) : '—';
-  const latestFile = latest.csv_file || latest.id.slice(0,8);
+function renderDatesPicker(dates) {
+  const list    = document.getElementById('d1-uploads-list');
+  const latest  = dates[0];
 
-  const csvOpts = uploads.map(u => {
-    const dt   = u.created_at ? new Date(u.created_at).toLocaleString('en-GB', { dateStyle:'short', timeStyle:'short' }) : '—';
-    const file = u.csv_file ? u.csv_file.replace(/\.csv$/i,'') : u.id.slice(0,8);
-    return `<option value="${u.id}" data-meta="${encodeURIComponent(JSON.stringify(u))}">${file} — ${dt}</option>`;
-  }).join('');
+  function metricChips(d) {
+    const total   = d.total_records || 0;
+    const success = d.extraction_success || 0;
+    const failed  = d.extraction_failed  || 0;
+    const docs    = d.pdf_docs_found     || 0;
+    const pct     = total ? Math.round(success / total * 100) : 0;
+    const chips = [];
+    if (total) chips.push(`<span class="mono text-xs bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-medium">✓ ${pct}%</span>`);
+    if (failed) chips.push(`<span class="mono text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-medium">✗ ${failed.toLocaleString()}</span>`);
+    if (docs)   chips.push(`<span class="mono text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium">📄 ${docs.toLocaleString()}</span>`);
+    return chips.join('');
+  }
 
-  const htmlOpts = [
-    '<option value="">— No HTML report —</option>',
-    ...(r2Files || []).map(f =>
-      `<option value="${escAttr(f.key)}" data-name="${escAttr(f.name)}">${escHtml(f.name)} (${f.date})</option>`
-    ),
-  ].join('');
-
-  list.innerHTML = `
-    <div class="px-5 py-4">
-      <div class="text-xs text-zinc-400 uppercase tracking-wide font-semibold mb-2.5">Latest</div>
-      <div class="flex items-center gap-3 bg-zinc-50 rounded-xl px-4 py-3 border border-zinc-100">
-        <div class="flex-1 min-w-0">
-          <div class="text-sm font-medium text-zinc-800 mono truncate">${latestFile}</div>
-          <div class="text-xs text-zinc-400 mt-0.5">${latestDt} &nbsp;·&nbsp; <span class="text-emerald-600">${(latest.csv_rows||0).toLocaleString()} rows</span>${latest.html_items ? ` &nbsp;·&nbsp; <span class="text-sky-600">${latest.html_items.toLocaleString()} HTML</span>` : ''}</div>
+  const rows = dates.map((d, i) => {
+    const isLatest = i === 0;
+    return `<div class="flex items-center gap-3 px-5 py-3.5 ${isLatest ? 'bg-zinc-50' : ''} border-b border-zinc-50 hover:bg-zinc-50 transition-colors">
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2 mb-1">
+          <span class="mono text-sm font-bold text-zinc-900">${d.processed_date}</span>
+          ${isLatest ? '<span class="text-xs text-zinc-400 font-medium">Latest</span>' : ''}
         </div>
-        <button onclick="loadUploadFromD1('${latest.id}', ${JSON.stringify(latest).replace(/'/g,"&#39;")})"
-          class="flex-shrink-0 text-xs font-semibold bg-zinc-900 text-white px-4 py-2 rounded-xl hover:bg-zinc-700 transition-colors">
-          Load Latest
-        </button>
-      </div>
-    </div>
-    <div class="px-5 pb-5 border-t border-zinc-100 pt-4">
-      <div class="text-xs text-zinc-400 uppercase tracking-wide font-semibold mb-3">Select &amp; Load</div>
-      <div class="grid grid-cols-2 gap-3 mb-3">
-        <div>
-          <label class="text-xs text-zinc-500 font-medium block mb-1.5">CSV Dataset</label>
-          <select id="picker-select" class="w-full text-xs mono text-zinc-700 border border-zinc-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-zinc-400 cursor-pointer">
-            ${csvOpts}
-          </select>
-        </div>
-        <div>
-          <label class="text-xs text-zinc-500 font-medium block mb-1.5">HTML Report</label>
-          <div class="flex gap-1.5">
-            <select id="picker-html-select" onchange="window._pickerLocalHTML=null;document.getElementById('picker-html-local-label').textContent=''"
-              class="flex-1 min-w-0 text-xs mono text-zinc-700 border border-zinc-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-zinc-400 cursor-pointer">
-              ${htmlOpts}
-            </select>
-            <button onclick="document.getElementById('picker-html-input').click()" title="Upload local HTML file"
-              class="flex-shrink-0 border border-zinc-200 rounded-lg px-2.5 py-2 text-zinc-400 hover:text-sky-600 hover:border-sky-300 hover:bg-sky-50 transition-colors bg-white">
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-            </button>
-          </div>
-          <div id="picker-html-local-label" class="text-xs text-sky-600 mono mt-1 truncate h-4"></div>
+        <div class="flex flex-wrap items-center gap-1.5">
+          <span class="text-xs text-zinc-400">${(d.csv_rows||0).toLocaleString()} CSV · ${(d.html_items||0).toLocaleString()} HTML</span>
+          ${metricChips(d)}
         </div>
       </div>
-      <input type="file" id="picker-html-input" accept=".html" class="hidden" onchange="pickerHTMLFileSelected(this)">
-      <button onclick="loadPickerSelected()"
-        class="w-full text-sm font-semibold bg-zinc-900 text-white py-2.5 rounded-xl hover:bg-zinc-700 transition-colors mt-1">
-        Load Selected
+      <button onclick="loadDateFromD1('${escAttr(d.processed_date)}')"
+        class="flex-shrink-0 text-xs font-semibold ${isLatest ? 'bg-zinc-900 text-white hover:bg-zinc-700' : 'bg-white text-zinc-600 border border-zinc-200 hover:border-zinc-400 hover:text-zinc-900'} px-3.5 py-2 rounded-xl transition-colors">
+        ${isLatest ? 'Load Latest' : 'Load →'}
       </button>
     </div>`;
-}
-
-function pickerHTMLFileSelected(input) {
-  const file = input.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = evt => {
-    window._pickerLocalHTML = { text: evt.target.result, name: file.name, file };
-    const lbl = document.getElementById('picker-html-local-label');
-    if (lbl) lbl.textContent = file.name;
-    const sel = document.getElementById('picker-html-select');
-    if (sel) sel.value = '';
-  };
-  reader.readAsText(file, 'UTF-8');
-  input.value = '';
-}
-
-function loadPickerSelected() {
-  const csvSel = document.getElementById('picker-select');
-  const csvOpt = csvSel.options[csvSel.selectedIndex];
-  const uploadId = csvOpt.value;
-  const meta = JSON.parse(decodeURIComponent(csvOpt.dataset.meta));
-
-  const opts = {};
-  if (window._pickerLocalHTML) {
-    opts.htmlText = window._pickerLocalHTML.text;
-    opts.htmlName = window._pickerLocalHTML.name;
-    opts.htmlFile = window._pickerLocalHTML.file;
-    window._pickerLocalHTML = null;
-  } else {
-    const htmlSel = document.getElementById('picker-html-select');
-    const htmlOpt = htmlSel?.options[htmlSel.selectedIndex];
-    if (htmlOpt?.value) {
-      opts.htmlKey  = htmlOpt.value;
-      opts.htmlName = htmlOpt.dataset.name || htmlOpt.value.split('/').pop().replace(/^\d+-/, '');
-    }
-  }
-  loadUploadFromD1(uploadId, meta, opts);
-}
-
-function populateUploadSwitcher(uploads) {
-  const sel = document.getElementById('upload-switcher');
-  sel.innerHTML = uploads.map(u => {
-    const dt  = u.created_at ? new Date(u.created_at).toLocaleString('en-GB', { dateStyle:'short', timeStyle:'short' }) : '—';
-    const file = u.csv_file ? u.csv_file.replace(/\.csv$/i,'') : u.id.slice(0,8);
-    return `<option value="${u.id}">${file} — ${dt}</option>`;
   }).join('');
+
+  list.innerHTML = rows || `<div class="px-5 py-8 text-center text-xs text-zinc-300">No dated datasets found</div>`;
 }
 
-async function loadUploadFromD1(uploadId, uploadMeta, opts = {}) {
-  activeUploadId = uploadId;
-  const annotPromise = loadAnnotations(uploadId);
+function populateUploadSwitcher() { /* replaced by renderDateNavigator */ }
 
-  // show loading overlay on picker
+function renderDateNavigator(dates, activeDateStr) {
+  const badge   = document.getElementById('nav-date-badge');
+  const metrics = document.getElementById('nav-metrics');
+  const prevBtn = document.getElementById('nav-prev');
+  const nextBtn = document.getElementById('nav-next');
+  if (!badge) return;
+
+  const idx = dates.findIndex(d => d.processed_date === activeDateStr);
+  badge.textContent = activeDateStr || '—';
+
+  // Build metric chips (same helper as picker)
+  const d = dates[idx] || {};
+  const total   = d.total_records || 0;
+  const success = d.extraction_success || 0;
+  const failed  = d.extraction_failed  || 0;
+  const docs    = d.pdf_docs_found     || 0;
+  const pct     = total ? Math.round(success / total * 100) : 0;
+  const chips = [];
+  if (total) chips.push(`<span class="mono text-xs bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-medium">✓${pct}%</span>`);
+  if (failed) chips.push(`<span class="mono text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-medium">✗${failed.toLocaleString()}</span>`);
+  if (docs)   chips.push(`<span class="mono text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium">📄${docs.toLocaleString()}</span>`);
+  metrics.innerHTML = chips.join('');
+
+  // dates sorted DESC: index 0 = newest. Prev = older = idx+1, Next = newer = idx-1
+  prevBtn.disabled = idx >= dates.length - 1;
+  nextBtn.disabled = idx <= 0;
+}
+
+// navigateDate(dir): dir=+1 → older date (higher index), dir=-1 → newer date (lower index)
+function navigateDate(dir) {
+  const idx = allDates.findIndex(d => d.processed_date === currentDate);
+  const next = allDates[idx + dir];
+  if (!next) return;
+  loadDateFromD1(next.processed_date, next);
+}
+
+
+async function loadDateFromD1(processedDate, dateMeta, opts = {}) {
+  currentDate = processedDate;
+  const annotPromise = loadAnnotations();
+
   document.getElementById('d1-loading-upload').classList.remove('hidden');
   document.getElementById('d1-picker').classList.add('hidden');
   document.getElementById('d1-loading').classList.add('hidden');
 
-  const meta = typeof uploadMeta === 'string' ? JSON.parse(uploadMeta) : uploadMeta;
-  const label = meta?.csv_file || uploadId.slice(0,8);
-  document.getElementById('d1-loading-upload-label').textContent = `Loading ${label}…`;
+  const meta = dateMeta
+    ? (typeof dateMeta === 'string' ? JSON.parse(dateMeta) : dateMeta)
+    : (allDates.find(d => d.processed_date === processedDate) || {});
+  document.getElementById('d1-loading-upload-label').textContent = `Loading ${processedDate}…`;
 
   try {
-    // fetch all CSV records (paginated)
+    // fetch all CSV records (paginated) by processed_date
     const allRecs = [];
     let page = 1;
     while (true) {
       document.getElementById('d1-loading-upload-sub').textContent = `Fetching CSV records… page ${page}`;
-      const r = await fetch(`/api/records?upload_id=${uploadId}&limit=1000&page=${page}`);
+      const r = await fetch(`/api/records?processed_date=${encodeURIComponent(processedDate)}&limit=1000&page=${page}`);
       const d = await r.json();
       allRecs.push(...(d.records || []));
       if (!d.records?.length || page >= (d.pages || 1)) break;
       page++;
     }
 
-    // fetch all HTML changes (paginated)
+    // fetch all HTML changes (paginated) by processed_date
     const allChgs = [];
     page = 1;
     while (true) {
       document.getElementById('d1-loading-upload-sub').textContent = `Fetching HTML changes… page ${page}`;
-      const r = await fetch(`/api/html-changes?upload_id=${uploadId}&limit=1000&page=${page}`);
+      const r = await fetch(`/api/html-changes?processed_date=${encodeURIComponent(processedDate)}&limit=1000&page=${page}`);
       const d = await r.json();
       allChgs.push(...(d.changes || []));
       if (!d.changes?.length || page >= (d.pages || 1)) break;
@@ -1893,41 +1946,31 @@ async function loadUploadFromD1(uploadId, uploadMeta, opts = {}) {
 
     allData = allRecs.map(d1RowToCSV);
 
-    // HTML loading — priority: opts override > linked R2 key > D1 fallback
-    if (opts.htmlText) {
-      // local file passed directly from picker
-      htmlData     = parseHTMLReport(opts.htmlText);
-      htmlLoaded   = htmlData.length > 0;
-      htmlFileName = opts.htmlName || '';
-      if (opts.htmlFile) _uploadHTMLToR2(opts.htmlFile); // background R2 upload
-    } else {
-      const r2Key = opts.htmlKey || meta?.html_file || '';
-      if (r2Key) {
-        try {
-          document.getElementById('d1-loading-upload-sub').textContent = 'Loading HTML report from R2…';
-          const r2Resp = await fetch('/api/html-files/' + r2Key.split('/').map(encodeURIComponent).join('/'));
-          if (r2Resp.ok) {
-            const rawHTML = await r2Resp.text();
-            htmlData     = parseHTMLReport(rawHTML);
-            htmlLoaded   = htmlData.length > 0;
-            htmlFileName = opts.htmlName || r2Key.split('/').pop().replace(/^\d+-/, '');
-          }
-        } catch(e) {
-          console.warn('Failed to load HTML from R2:', e);
+    // HTML loading — R2 key from dateMeta > D1 html_changes fallback
+    const r2Key = opts.htmlKey || meta?.html_file || '';
+    if (r2Key) {
+      try {
+        document.getElementById('d1-loading-upload-sub').textContent = 'Loading HTML report from R2…';
+        const r2Resp = await fetch('/api/html-files/' + r2Key.split('/').map(encodeURIComponent).join('/'));
+        if (r2Resp.ok) {
+          const rawHTML = await r2Resp.text();
+          htmlData     = parseHTMLReport(rawHTML);
+          htmlLoaded   = htmlData.length > 0;
+          htmlFileName = r2Key.split('/').pop().replace(/^\d+-/, '');
         }
-      } else {
-        // Fallback: use html_changes from D1 if any were stored there
-        htmlData     = allChgs.map(d1HtmlToItem);
-        htmlLoaded   = htmlData.length > 0;
-        htmlFileName = '';
+      } catch(e) {
+        console.warn('Failed to load HTML from R2:', e);
       }
     }
+    if (!htmlLoaded) {
+      htmlData     = allChgs.map(d1HtmlToItem);
+      htmlLoaded   = htmlData.length > 0;
+      htmlFileName = '';
+    }
 
-    // sync switcher to this upload
-    const switcher = document.getElementById('upload-switcher');
-    if (switcher) switcher.value = uploadId;
-
+    renderDateNavigator(allDates, processedDate);
     await annotPromise;
+    loadDateAnnotation(processedDate);
     processData();
     document.getElementById('d1-loading-upload').classList.add('hidden');
   } catch(e) {
@@ -1939,22 +1982,80 @@ async function loadUploadFromD1(uploadId, uploadMeta, opts = {}) {
   }
 }
 
-async function switchUpload(uploadId) {
-  if (!uploadId || uploadId === activeUploadId) return;
-  const meta = allUploads.find(u => u.id === uploadId) || { id: uploadId };
+// Keep legacy alias so any remaining internal calls don't break
+function loadUploadFromD1(uploadId, meta, opts = {}) {
+  return loadDateFromD1(meta?.processed_date || uploadId, meta, opts);
+}
+
+async function switchDate(processedDate) {
+  if (!processedDate || processedDate === currentDate) return;
+  const dateMeta = allDates.find(d => d.processed_date === processedDate) || {};
   document.getElementById('upload-screen').classList.remove('hidden');
   document.getElementById('dashboard').classList.add('hidden');
-  // reset data state
   allData=[]; approved=[]; rejected=[]; failed=[];
   filtered={approved:[],rejected:[],failed:[]};
   pages={approved:1,rejected:1,failed:1};
   stateData={}; mapMode='total'; mapRendered=false;
-  htmlData=[]; htmlLoaded=false;
-  urlToCSVRows={};
+  htmlData=[]; htmlLoaded=false; urlToCSVRows={};
   ['state-filter','region-filter','type-filter'].forEach(id => {
     const el=document.getElementById(id); if(el){while(el.options.length>1) el.remove(1); el.value='';}
   });
-  loadUploadFromD1(uploadId, meta);
+  loadDateFromD1(processedDate, dateMeta);
+}
+
+// ── DATE ANNOTATIONS ──
+async function loadDateAnnotation(date) {
+  const ta     = document.getElementById('annot-textarea');
+  const preview= document.getElementById('annot-collapsed-preview');
+  const label  = document.getElementById('annot-strip-label');
+  if (!ta) return;
+  ta.value = '';
+  if (label) label.textContent = `Notes for ${date}`;
+  try {
+    const d = await (await fetch(`/api/date-annotations?date=${encodeURIComponent(date)}`)).json();
+    const text = d.annotation || '';
+    ta.value = text;
+    if (preview) preview.textContent = text ? text.split('\n')[0] : 'Add notes for this date…';
+  } catch(e) { console.warn('Failed to load date annotation:', e); }
+}
+
+function onAnnotationInput() {
+  const statusEl = document.getElementById('annot-save-status');
+  if (statusEl) statusEl.textContent = 'Saving…';
+  clearTimeout(_annotSaveTimer);
+  _annotSaveTimer = setTimeout(saveDateAnnotation, 600);
+}
+
+async function saveDateAnnotation() {
+  if (!currentDate) return;
+  const ta       = document.getElementById('annot-textarea');
+  const statusEl = document.getElementById('annot-save-status');
+  const preview  = document.getElementById('annot-collapsed-preview');
+  const text     = ta?.value || '';
+  try {
+    await fetch('/api/date-annotations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date: currentDate, annotation: text }),
+    });
+    const now = new Date().toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+    if (statusEl) { statusEl.textContent = `Saved · ${now}`; setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000); }
+    if (preview) preview.textContent = text ? text.split('\n')[0] : 'Add notes for this date…';
+  } catch(e) {
+    if (statusEl) { statusEl.textContent = 'Error'; setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000); }
+  }
+}
+
+let _annotExpanded = false;
+function toggleAnnotationStrip() {
+  _annotExpanded = !_annotExpanded;
+  const expanded  = document.getElementById('annot-expanded');
+  const collapsed = document.getElementById('annot-collapsed-preview');
+  const chevron   = document.getElementById('annot-strip-chevron');
+  if (expanded)  expanded.classList.toggle('hidden', !_annotExpanded);
+  if (collapsed) collapsed.classList.toggle('hidden', _annotExpanded);
+  if (chevron)   chevron.textContent = _annotExpanded ? '▴' : '▾';
+  if (_annotExpanded) document.getElementById('annot-textarea')?.focus();
 }
 
 // ── MANAGE PANEL ──
@@ -1971,6 +2072,26 @@ function closeManagePanel() {
   const panel   = document.getElementById('manage-panel');
   panel.classList.remove('open'); overlay.classList.remove('open');
   setTimeout(() => { panel.classList.add('hidden'); overlay.classList.add('hidden'); }, 250);
+}
+
+async function runBackfill() {
+  const btn = document.getElementById('backfill-btn');
+  btn.textContent = 'Running…'; btn.disabled = true;
+  try {
+    const r = await fetch('/api/migrate/backfill-dates', { method: 'POST' });
+    const d = await r.json();
+    btn.textContent = d.ok ? `Done (${d.changes} updated)` : 'Failed';
+    if (d.ok && d.changes > 0) {
+      // Refresh dates cache so new entries appear in picker
+      const dr = await fetch('/api/dates');
+      const dd = await dr.json();
+      if (dd.dates) { allDates = dd.dates; renderDateNavigator(allDates, currentDate); }
+      loadManageList();
+    }
+  } catch (e) {
+    btn.textContent = 'Error';
+  }
+  setTimeout(() => { btn.textContent = 'Run'; btn.disabled = false; }, 3000);
 }
 
 // ── ADMIN PANEL ──
@@ -2010,7 +2131,7 @@ function _adminCountByLLMAndAnnot(llmCat, annotSet) {
 
 function renderAdminStats() {
   const el = document.getElementById('admin-stats');
-  if (!activeUploadId || !allData.length) {
+  if (!currentDate || !allData.length) {
     el.innerHTML = '<p class="text-sm text-zinc-400 text-center py-16">No dataset loaded.</p>';
     return;
   }
@@ -2046,6 +2167,7 @@ function renderAdminStats() {
   let totalAnnotated = 0, llmCorrect = 0, llmWrong = 0;
   const countedKeys = new Set();
 
+  // Annotation progress: count from HTML items
   for (const item of htmlData) {
     const key = annotKey(item);
     const ann = _annotations[key];
@@ -2053,16 +2175,6 @@ function renderAdminStats() {
     totalAnnotated++;
     annotCounts[ann] = (annotCounts[ann] || 0) + 1;
     countedKeys.add(key);
-
-    const match = urlToCSVRows[normalizeURL(item.url)];
-    if (match) {
-      const llmApproved = match.approved.length > 0;
-      const llmRejected = match.rejected.length > 0 && !llmApproved;
-      if      (llmApproved && IS_PROJECT.has(ann))  llmCorrect++;
-      else if (llmApproved && NOT_PROJECT.has(ann)) llmWrong++;
-      else if (llmRejected && NOT_PROJECT.has(ann)) llmCorrect++;
-      else if (llmRejected && IS_PROJECT.has(ann))  llmWrong++;
-    }
   }
   // also count annotations set via CSV table rows (no HTML counterpart)
   for (const row of allData) {
@@ -2074,13 +2186,34 @@ function renderAdminStats() {
     annotCounts[ann] = (annotCounts[ann] || 0) + 1;
   }
 
+  // Accuracy: only from LLM Approved + Rejected tabs (not HTML-only items)
+  const accuracyKeysSeen = new Set();
+  for (const row of approved) {
+    const key = rowAnnotKey(row);
+    if (!key || accuracyKeysSeen.has(key)) continue;
+    const ann = _annotations[key];
+    if (!ann) continue;
+    accuracyKeysSeen.add(key);
+    if      (IS_PROJECT.has(ann))  llmCorrect++;
+    else if (NOT_PROJECT.has(ann)) llmWrong++;
+  }
+  for (const row of rejected) {
+    const key = rowAnnotKey(row);
+    if (!key || accuracyKeysSeen.has(key)) continue;
+    const ann = _annotations[key];
+    if (!ann) continue;
+    accuracyKeysSeen.add(key);
+    if      (NOT_PROJECT.has(ann)) llmCorrect++;
+    else if (IS_PROJECT.has(ann))  llmWrong++;
+  }
+
   const accuracyBase = llmCorrect + llmWrong;
   const llmAccuracy  = accuracyBase ? (llmCorrect / accuracyBase * 100).toFixed(1) : null;
   const htmlAnnotPct = pct(totalAnnotated, totalHTML || 1);
 
-  const meta  = allUploads.find(u => u.id === activeUploadId) || {};
-  const dt    = meta.created_at ? new Date(meta.created_at).toLocaleString('en-GB', { dateStyle:'medium', timeStyle:'short' }) : '—';
-  const fname = meta.csv_file  || activeUploadId.slice(0, 14) + '…';
+  const dateMeta = allDates.find(d => d.processed_date === currentDate) || {};
+  const dt    = currentDate || '—';
+  const fname = currentDate ? `Batch ${currentDate}` : '—';
 
   el.innerHTML = `
     <!-- File Overview -->
@@ -2088,8 +2221,7 @@ function renderAdminStats() {
       <div class="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-3">File Overview</div>
       <div class="bg-zinc-50 border border-zinc-100 rounded-xl divide-y divide-zinc-100">
         <div class="flex items-center justify-between px-4 py-2.5 text-xs"><span class="text-zinc-400">File</span><span class="mono font-semibold text-zinc-800 truncate max-w-xs ml-4">${escHtml(fname)}</span></div>
-        <div class="flex items-center justify-between px-4 py-2.5 text-xs"><span class="text-zinc-400">Uploaded</span><span class="mono text-zinc-600">${dt}</span></div>
-        <div class="flex items-center justify-between px-4 py-2.5 text-xs"><span class="text-zinc-400">Upload ID</span><span class="mono text-zinc-300 text-xs">${activeUploadId}</span></div>
+        <div class="flex items-center justify-between px-4 py-2.5 text-xs"><span class="text-zinc-400">Processed Date</span><span class="mono text-zinc-600">${dt}</span></div>
         <div class="flex items-center justify-between px-4 py-2.5 text-xs"><span class="text-zinc-400">Total Records</span><span class="mono font-semibold text-zinc-700">${totalCSV.toLocaleString()} CSV &nbsp;·&nbsp; ${totalHTML.toLocaleString()} HTML changes</span></div>
       </div>
     </section>
@@ -2172,11 +2304,11 @@ function renderAdminStats() {
 }
 
 async function loadManageList() {
-  const list = document.getElementById('manage-list');
+  const list      = document.getElementById('manage-list');
   const loadingEl = document.getElementById('manage-loading');
   list.innerHTML = ''; loadingEl.classList.remove('hidden');
   try {
-    const resp = await fetch('/api/uploads?limit=50');
+    const resp = await fetch('/api/uploads?limit=200');
     const data = await resp.json();
     const uploads = data.uploads || [];
     loadingEl.classList.add('hidden');
@@ -2184,42 +2316,103 @@ async function loadManageList() {
       list.innerHTML = '<p class="text-xs text-zinc-300 text-center py-8">No datasets found in D1.</p>';
       return;
     }
-    list.innerHTML = uploads.map(u => {
-      const dt       = u.created_at ? new Date(u.created_at).toLocaleString('en-GB', { dateStyle:'medium', timeStyle:'short' }) : '—';
-      const isActive = u.id === activeUploadId;
-      const htmlKey  = u.html_file || '';
-      const htmlName = htmlKey ? htmlKey.split('/').pop().replace(/^\d+-/, '') : '';
-      return `<div class="bg-white border border-zinc-100 rounded-xl px-4 py-3 ${isActive ? 'ring-2 ring-emerald-200' : ''}">
-        <div class="flex items-center gap-3">
-          <div class="flex-1 min-w-0">
-            ${isActive ? '<span class="text-xs bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full font-medium mr-1.5">Active</span>' : ''}
-            <span class="text-xs font-medium text-zinc-700 mono">${u.csv_file || u.id.slice(0,8)}</span>
-            <div class="text-xs text-zinc-400 mt-0.5">${dt} &nbsp;·&nbsp; ${(u.csv_rows||0).toLocaleString()} rows &nbsp;·&nbsp; ${(u.html_items||0).toLocaleString()} HTML</div>
+
+    // Group by processed_date (nulls shown as 'unlinked')
+    const groups = {};
+    for (const u of uploads) {
+      const key = u.processed_date || 'unlinked';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(u);
+    }
+
+    list.innerHTML = Object.entries(groups)
+      .sort(([a], [b]) => b.localeCompare(a))
+      .map(([date, ups]) => {
+        const isActive  = date === currentDate;
+        const totalCSV  = ups.reduce((s, u) => s + (u.csv_rows   || 0), 0);
+        const totalHTML = ups.reduce((s, u) => s + (u.html_items || 0), 0);
+        const htmlKey   = ups.find(u => u.html_file)?.html_file || '';
+        const htmlName  = htmlKey ? htmlKey.split('/').pop().replace(/^\d+-/, '') : '';
+        const isLinked  = date !== 'unlinked';
+
+        const uploadRows = ups.map(u => {
+          const dt = u.created_at
+            ? new Date(u.created_at).toLocaleString('en-GB', { dateStyle:'short', timeStyle:'short' })
+            : '—';
+          return `<div class="flex items-center gap-2 text-xs text-zinc-400 py-1 border-t border-zinc-50">
+            <span class="mono truncate flex-1" title="${u.id}">${u.csv_file || u.id.slice(0,12)+'…'}</span>
+            <span>${dt}</span>
+            <span class="mono">${(u.csv_rows||0).toLocaleString()} rows</span>
+          </div>`;
+        }).join('');
+
+        return `<div class="bg-white border ${isActive ? 'border-emerald-200 ring-2 ring-emerald-100' : 'border-zinc-100'} rounded-xl px-4 py-3">
+          <div class="flex items-center gap-3 mb-1">
+            <div class="flex-1 min-w-0">
+              ${isActive ? '<span class="text-xs bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full font-medium mr-1.5">Active</span>' : ''}
+              <span class="mono text-sm font-bold text-zinc-900">${date}</span>
+              <div class="text-xs text-zinc-400 mt-0.5">${totalCSV.toLocaleString()} CSV rows &nbsp;·&nbsp; ${totalHTML.toLocaleString()} HTML changes &nbsp;·&nbsp; ${ups.length} upload${ups.length!==1?'s':''}</div>
+            </div>
+            <div class="flex gap-1.5 flex-shrink-0">
+              ${isLinked ? `
+              <button onclick="deleteDateCSV('${escAttr(date)}', this)" ${isActive ? 'disabled title="Cannot delete active dataset"' : ''}
+                class="text-xs text-amber-600 hover:text-amber-800 border border-amber-200 hover:border-amber-300 rounded-lg px-2.5 py-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed bg-white">
+                Del CSV
+              </button>
+              <button onclick="deleteDateAll('${escAttr(date)}', this)" ${isActive ? 'disabled title="Cannot delete active dataset"' : ''}
+                class="text-xs text-red-500 hover:text-red-700 border border-red-200 hover:border-red-300 rounded-lg px-2.5 py-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed bg-white">
+                Del All
+              </button>` : `
+              <button onclick="deleteUpload('${escAttr(ups[0].id)}', this)"
+                class="text-xs text-red-500 hover:text-red-700 border border-red-200 hover:border-red-300 rounded-lg px-2.5 py-1.5 transition-colors bg-white">
+                Delete
+              </button>`}
+            </div>
           </div>
-          <div class="flex gap-1.5 flex-shrink-0">
-            <button onclick="deleteCSVRecords('${u.id}', this)" ${isActive ? 'disabled title="Cannot delete active dataset"' : ''}
-              class="text-xs text-amber-600 hover:text-amber-800 border border-amber-200 hover:border-amber-300 rounded-lg px-2.5 py-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed bg-white">
-              Del CSV
+          ${uploadRows}
+          ${htmlKey ? `<div class="flex items-center gap-2 mt-2 pt-2 border-t border-zinc-50">
+            <svg class="w-3 h-3 text-sky-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"/></svg>
+            <span class="text-xs mono text-sky-600 truncate flex-1" title="${htmlKey}">${htmlName}</span>
+            <button onclick="deleteR2File('${escAttr(htmlKey)}', this, '${ups.find(u=>u.html_file)?.id||''}')"
+              class="flex-shrink-0 text-xs text-red-400 hover:text-red-600 border border-red-100 hover:border-red-300 rounded-md px-2 py-1 transition-colors bg-white">
+              Delete HTML
             </button>
-            <button onclick="deleteUpload('${u.id}', this)" ${isActive ? 'disabled title="Cannot delete active dataset"' : ''}
-              class="text-xs text-red-500 hover:text-red-700 border border-red-200 hover:border-red-300 rounded-lg px-2.5 py-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed bg-white">
-              Del All
-            </button>
-          </div>
-        </div>
-        ${htmlKey ? `<div class="flex items-center gap-2 mt-2 pt-2 border-t border-zinc-50">
-          <svg class="w-3 h-3 text-sky-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"/></svg>
-          <span class="text-xs mono text-sky-600 truncate flex-1" title="${htmlKey}">${htmlName}</span>
-          <button onclick="deleteR2File('${escAttr(htmlKey)}', this, '${u.id}')"
-            class="flex-shrink-0 text-xs text-red-400 hover:text-red-600 border border-red-100 hover:border-red-300 rounded-md px-2 py-1 transition-colors bg-white">
-            Delete HTML
-          </button>
-        </div>` : '<div class="mt-2 pt-2 border-t border-zinc-50 text-xs text-zinc-300 italic">No HTML report linked</div>'}
-      </div>`;
-    }).join('');
+          </div>` : '<div class="mt-2 pt-2 border-t border-zinc-50 text-xs text-zinc-300 italic">No HTML report linked</div>'}
+        </div>`;
+      }).join('');
   } catch(e) {
     loadingEl.classList.add('hidden');
     list.innerHTML = `<p class="text-xs text-red-400 text-center py-4">Failed: ${e.message}</p>`;
+  }
+}
+
+async function deleteDateCSV(date, btn) {
+  if (!confirm(`Delete all CSV records for ${date}? Upload entries and HTML files are kept.`)) return;
+  btn.disabled = true; btn.textContent = 'Deleting…';
+  try {
+    const resp = await fetch(`/api/dates/${encodeURIComponent(date)}/csv`, { method: 'DELETE' });
+    const d = await resp.json();
+    if (!d.ok) throw new Error(d.error || 'Delete failed');
+    loadManageList();
+  } catch(e) {
+    btn.disabled = false; btn.textContent = 'Del CSV';
+    alert('Delete failed: ' + e.message);
+  }
+}
+
+async function deleteDateAll(date, btn) {
+  if (!confirm(`Permanently delete ALL data for ${date}?\n\nThis removes CSV records, HTML changes, the R2 HTML file, and the upload entries. Cannot be undone.`)) return;
+  btn.disabled = true; btn.textContent = 'Deleting…';
+  try {
+    const resp = await fetch(`/api/dates/${encodeURIComponent(date)}`, { method: 'DELETE' });
+    const d = await resp.json();
+    if (!d.ok) throw new Error(d.error || 'Delete failed');
+    allDates = allDates.filter(x => x.processed_date !== date);
+    if (currentDate === date) { currentDate = ''; }
+    loadManageList();
+  } catch(e) {
+    btn.disabled = false; btn.textContent = 'Del All';
+    alert('Delete failed: ' + e.message);
   }
 }
 
@@ -2231,8 +2424,6 @@ async function deleteCSVRecords(uploadId, btn) {
     const resp = await fetch(`/api/uploads/${uploadId}/csv`, { method: 'DELETE' });
     const data = await resp.json();
     if (!data.ok) throw new Error(data.error || 'Delete failed');
-    allUploads = allUploads.map(u => u.id === uploadId ? { ...u, csv_rows: 0 } : u);
-    populateUploadSwitcher(allUploads);
     loadManageList();
   } catch(e) {
     btn.disabled = false;
@@ -2249,9 +2440,7 @@ async function deleteUpload(uploadId, btn) {
     const resp = await fetch(`/api/uploads/${uploadId}`, { method: 'DELETE' });
     const data = await resp.json();
     if (!data.ok) throw new Error(data.error || 'Delete failed');
-    // refresh manage list and uploads
-    allUploads = allUploads.filter(u => u.id !== uploadId);
-    populateUploadSwitcher(allUploads);
+    allDates = allDates.filter(d => d.processed_date !== currentDate);
     loadManageList();
   } catch(e) {
     btn.disabled = false;
@@ -2282,7 +2471,7 @@ async function _uploadHTMLToR2(file) {
   try {
     const fd = new FormData();
     fd.append('file', file);
-    if (activeUploadId) fd.append('upload_id', activeUploadId);
+    if (currentDate) fd.append('processed_date', currentDate);
     const resp = await fetch('/api/html-upload', { method: 'POST', body: fd });
     const d = await resp.json();
     if (d.ok) {
@@ -2577,13 +2766,20 @@ function renderHTMLChanges() {
           <!-- Date -->
           <div class="mt-2 mono text-xs text-zinc-300">${item.date || ''}</div>
           <!-- Annotation -->
-          <div class="mt-2 pt-2 border-t border-zinc-100" onclick="event.stopPropagation()">
-            <select class="w-full text-xs border border-zinc-200 rounded-lg px-2.5 py-1.5 bg-white text-zinc-600 focus:outline-none focus:border-zinc-400 cursor-pointer"
+          <div class="mt-2 pt-2 border-t border-zinc-100 flex gap-1.5" onclick="event.stopPropagation()">
+            <select class="flex-1 text-xs border border-zinc-200 rounded-lg px-2.5 py-1.5 bg-white text-zinc-600 focus:outline-none focus:border-zinc-400 cursor-pointer"
               data-annot-key="${encodeURIComponent(annotKey(item))}"
               onchange="saveAnnotation(this)"
               onclick="event.stopPropagation()">
               <option value="">— Annotate —</option>
               ${ANNOTATION_OPTIONS.map(o => `<option value="${o}" ${_annotations[annotKey(item)]===o?'selected':''}>${o}</option>`).join('')}
+            </select>
+            <select class="flex-1 text-xs border border-zinc-200 rounded-lg px-2.5 py-1.5 bg-white text-zinc-600 focus:outline-none focus:border-zinc-400 cursor-pointer"
+              data-annot-key="${encodeURIComponent(itemReasonKey(item))}"
+              onchange="saveAnnotation(this)"
+              onclick="event.stopPropagation()">
+              <option value="">— Not a Project Reason —</option>
+              ${REASON_OPTIONS.map(o => `<option value="${o}" ${_annotations[itemReasonKey(item)]===o?'selected':''}>${o}</option>`).join('')}
             </select>
           </div>
         </div>
