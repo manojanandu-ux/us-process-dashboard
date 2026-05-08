@@ -1222,7 +1222,7 @@ async function saveAnnotation(sel) {
 }
 
 function annotKey(item) {
-  return normalizeURL(item.url) || (item.title || '').trim().toLowerCase();
+  return 'html__' + (normalizeURL(item.url) || (item.title || '').trim().toLowerCase());
 }
 
 function rowAnnotKey(row) {
