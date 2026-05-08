@@ -596,6 +596,18 @@ export default {
       return json({ ok: true, changes });
     }
 
+    // ── POST /api/html-link — persist R2 key association for a date ──────────
+    if (pathname === "/api/html-link" && request.method === "POST") {
+      const body = await request.json();
+      const date = (body.processed_date || "").trim();
+      const key  = (body.key            || "").trim();
+      if (!date || !key) return err("processed_date and key required");
+      await env.DB.prepare(
+        "UPDATE uploads SET html_file = ? WHERE processed_date = ? AND (html_file IS NULL OR html_file = '')"
+      ).bind(key, date).run();
+      return json({ ok: true });
+    }
+
     return err("Not found", 404);
   },
 };

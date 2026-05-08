@@ -2618,6 +2618,16 @@ async function loadFromR2(key, name) {
     const html = await resp.text();
     closeR2Picker();
     loadHTMLText(html, name + ' (R2)');
+    // Persist the R2 key so this file auto-loads on refresh
+    if (currentDate) {
+      fetch('/api/html-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ processed_date: currentDate, key }),
+      }).catch(() => {});
+      const meta = allDates.find(d => d.processed_date === currentDate);
+      if (meta) meta.html_file = key;
+    }
   } catch(e) {
     alert('Failed to load file: ' + e.message);
     if (srcLabel) srcLabel.textContent = '';
